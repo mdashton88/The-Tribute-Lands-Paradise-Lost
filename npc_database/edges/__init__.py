@@ -12,6 +12,12 @@ Modular structure — one file per source:
 Each module exports: SOURCE, EDGES
 """
 
+VERSION = {
+    "version": "1.0.0",
+    "updated": "2025-02-02",
+    "changes": "Initial modular structure — 193 edges across 6 sources"
+}
+
 from . import core
 from . import fantasy_companion
 from . import ammaria
