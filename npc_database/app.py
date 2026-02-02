@@ -19,7 +19,7 @@ from pathlib import Path
 from flask import Flask, render_template_string, request, jsonify, send_file, redirect, url_for
 
 # Equipment catalogue — weapons, armor, gear from all sources
-from equipment_catalogue import WEAPONS as CAT_WEAPONS, ARMOR as CAT_ARMOR, GEAR as CAT_GEAR, SOURCES as CAT_SOURCES
+from equipment import WEAPONS as CAT_WEAPONS, ARMOR as CAT_ARMOR, GEAR as CAT_GEAR, SOURCES as CAT_SOURCES
 
 # ============================================================
 # CONFIGURATION
