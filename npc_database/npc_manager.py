@@ -251,10 +251,10 @@ def add_npc_from_dict(data):
     # Add armor
     for a in armor:
         conn.execute("""
-            INSERT INTO npc_armor (npc_id, name, protection, area_protected, min_str, notes)
+            INSERT INTO npc_armor (npc_id, name, protection, area_protected, min_strength, notes)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (npc_id, a['name'], a.get('protection', 0), a.get('area_protected'),
-              a.get('min_str'), a.get('notes')))
+              a.get('min_strength'), a.get('notes')))
     
     conn.commit()
     conn.close()
