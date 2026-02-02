@@ -38,15 +38,20 @@ echo [3/4] Rebuilding database...
 if exist tribute_lands_npcs.db (
     del tribute_lands_npcs.db >nul 2>&1
 )
-python seed_data.py >nul 2>&1
+echo.
+python seed_data.py
 if errorlevel 1 (
     color 0C
     echo.
-    echo ERROR: Failed to build database!
+    echo ========================================
+    echo   ERROR: Database build failed!
+    echo   See error message above.
+    echo ========================================
     echo.
     pause
     exit /b 1
 )
+echo.
 echo       Database rebuilt with latest data.
 
 REM Step 4: Start server
