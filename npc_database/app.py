@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.5.1",
+    "version": "2.0.0",
     "updated": "2025-02-02",
-    "changes": "Live search filtering on all 6 catalogue pickers"
+    "changes": "4-column layout: sidebar, stat block, dynamic workspace panel, narrative + portrait. Modals replaced with inline editing."
 }
 
 import sqlite3
@@ -23,7 +23,8 @@ import webbrowser
 import threading
 import subprocess
 from pathlib import Path
-from flask import Flask, render_template_string, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template_string, request, jsonify, send_file, redirect, url_for, send_from_directory
+from werkzeug.utils import secure_filename
 
 # Equipment catalogue — weapons, armor, gear from all sources
 from equipment import WEAPONS as CAT_WEAPONS, ARMOR as CAT_ARMOR, GEAR as CAT_GEAR, SOURCES as CAT_SOURCES
@@ -152,6 +153,19 @@ def init_db_if_needed():
             print("  Migrated: npc_powers table added")
         conn.commit()
         conn.close()
+
+    # Portrait column migration
+    conn = get_db()
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(npcs)").fetchall()]
+    if 'portrait_path' not in cols:
+        conn.execute("ALTER TABLE npcs ADD COLUMN portrait_path TEXT")
+        conn.commit()
+        print("  Migrated: portrait_path column added")
+    conn.close()
+
+    # Ensure portraits directory exists
+    portraits_dir = BASE_DIR / 'portraits'
+    portraits_dir.mkdir(exist_ok=True)
 
 def die_str(value):
     if value and value > 0:
@@ -449,21 +463,96 @@ HTML_TEMPLATE = '''
             color: var(--text);
         }
 
-        /* --- TWO-COLUMN DETAIL LAYOUT --- */
+        /* --- THREE-COLUMN DETAIL LAYOUT --- */
         .detail-columns {
             display: flex;
-            gap: 20px;
+            gap: 16px;
             margin-top: 14px;
+            height: calc(100vh - 180px);
         }
         .col-stats {
-            width: 420px;
-            min-width: 420px;
+            width: 380px;
+            min-width: 380px;
             flex-shrink: 0;
+            overflow-y: auto;
+        }
+        .col-workspace {
+            flex: 1;
+            min-width: 280px;
+            overflow-y: auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 14px 16px;
         }
         .col-narrative {
-            flex: 1;
-            min-width: 0;
+            width: 320px;
+            min-width: 280px;
+            flex-shrink: 0;
+            overflow-y: auto;
         }
+        .workspace-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-dim);
+            font-size: 13px;
+            text-align: center;
+        }
+        .workspace-empty .ws-hint { font-size: 11px; margin-top: 6px; color: var(--border); }
+        .workspace-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .workspace-header h3 {
+            font-size: 14px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .panel-clickable h3 { cursor: pointer; }
+        .panel-clickable h3:hover { color: var(--text-bright); }
+
+        /* --- PORTRAIT --- */
+        .portrait-area {
+            text-align: center;
+            margin-bottom: 14px;
+        }
+        .portrait-frame {
+            width: 100%;
+            max-width: 260px;
+            aspect-ratio: 3/4;
+            margin: 0 auto 8px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        .portrait-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .portrait-frame .portrait-placeholder {
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+        .portrait-upload-btn {
+            font-size: 11px;
+            cursor: pointer;
+            color: var(--accent-dim);
+        }
+        .portrait-upload-btn:hover { color: var(--accent); }
         .stat-block-panel {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -903,225 +992,6 @@ HTML_TEMPLATE = '''
     </div>
 </div>
 
-<!-- WEAPONS MODAL -->
-<div class="modal-overlay" id="weaponsModal">
-    <div class="modal" style="width:580px">
-        <h3>Manage Weapons — <span id="weaponsNpcName"></span></h3>
-        <div id="weaponsList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD WEAPON</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catWeaponSearch" placeholder="Search weapons..." oninput="filterCatalogue('weapon')" style="font-size:12px;margin-bottom:4px">
-                <select id="catWeaponPick" onchange="fillWeaponFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catWeaponSource" onchange="loadWeaponCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Name</label><input id="newWepName" placeholder="Longsword"></div>
-            <div class="form-group"><label>Damage</label><input id="newWepDamage" placeholder="Str+d8"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>FG Damagedice</label><input id="newWepDice" placeholder="d8+d8"></div>
-            <div class="form-group" style="max-width:80px"><label>AP</label><input id="newWepAP" type="number" value="0"></div>
-            <div class="form-group" style="max-width:100px"><label>Type</label>
-                <select id="newWepType"><option>Melee</option><option>Ranged</option><option>Thrown</option></select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Range</label><input id="newWepRange" placeholder="15/30/60"></div>
-            <div class="form-group" style="max-width:80px"><label>Reach</label><input id="newWepReach" type="number" value="0"></div>
-            <div class="form-group"><label>Notes</label><input id="newWepNotes" placeholder="Two hands, Reload 1"></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addWeapon()">Add Weapon</button></div>
-        <div class="form-actions"><button class="btn" onclick="closeWeaponsModal()">Done</button></div>
-    </div>
-</div>
-
-<!-- ARMOUR MODAL -->
-<div class="modal-overlay" id="armorModal">
-    <div class="modal" style="width:530px">
-        <h3>Manage Armour — <span id="armorNpcName"></span></h3>
-        <div id="armorList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ARMOUR</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catArmorSearch" placeholder="Search armour..." oninput="filterCatalogue('armor')" style="font-size:12px;margin-bottom:4px">
-                <select id="catArmorPick" onchange="fillArmorFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catArmorSource" onchange="loadArmorCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Name</label><input id="newArmorName" placeholder="Chain Mail"></div>
-            <div class="form-group" style="max-width:100px"><label>Protection</label><input id="newArmorProt" type="number" value="2"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Areas Protected</label><input id="newArmorArea" placeholder="Torso, arms, legs"></div>
-            <div class="form-group" style="max-width:100px"><label>Min Str</label><input id="newArmorStr" placeholder="d8"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group" style="max-width:100px"><label>Weight</label><input id="newArmorWeight" type="number" value="0" step="0.5"></div>
-            <div class="form-group" style="max-width:100px"><label>Cost</label><input id="newArmorCost" placeholder="300"></div>
-            <div class="form-group"><label>Notes</label><input id="newArmorNotes" placeholder="Heavy Armor"></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addArmor()">Add Armour</button></div>
-        <div class="form-actions"><button class="btn" onclick="closeArmorModal()">Done</button></div>
-    </div>
-</div>
-
-<!-- GEAR MODAL -->
-<div class="modal-overlay" id="gearModal">
-    <div class="modal" style="width:510px">
-        <h3>Manage Gear — <span id="gearNpcName"></span></h3>
-        <div id="gearList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ITEM</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catGearSearch" placeholder="Search gear..." oninput="filterCatalogue('gear')" style="font-size:12px;margin-bottom:4px">
-                <select id="catGearPick" onchange="fillGearFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catGearSource" onchange="loadGearCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Item Name</label><input id="newGearName" placeholder="Rope (50')"></div>
-            <div class="form-group" style="max-width:70px"><label>Qty</label><input id="newGearQty" type="number" value="1" min="1"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group" style="max-width:100px"><label>Weight</label><input id="newGearWeight" type="number" value="0" step="0.5"></div>
-            <div class="form-group" style="max-width:100px"><label>Cost</label><input id="newGearCost" placeholder="10"></div>
-            <div class="form-group"><label>Notes</label><input id="newGearNotes" placeholder=""></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addGear()">Add Item</button></div>
-        <div class="form-actions"><button class="btn" onclick="closeGearModal()">Done</button></div>
-    </div>
-</div>
-
-<!-- HINDRANCES MODAL -->
-<div class="modal-overlay" id="hindrancesModal">
-    <div class="modal" style="width:530px">
-        <h3>Manage Hindrances — <span id="hindrancesNpcName"></span></h3>
-        <div id="hindrancesList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD HINDRANCE</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catHindranceSearch" placeholder="Search hindrances..." oninput="filterCatalogue('hindrance')" style="font-size:12px;margin-bottom:4px">
-                <select id="catHindrancePick" onchange="fillHindranceFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catHindranceSource" onchange="loadHindranceCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Name</label><input id="newHindName" placeholder="Loyal"></div>
-            <div class="form-group" style="max-width:120px"><label>Severity</label>
-                <select id="newHindSeverity"><option>Minor</option><option>Major</option></select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Notes</label><input id="newHindNotes" placeholder="To the Consortium, etc."></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addHindrance()">Add Hindrance</button></div>
-        <div class="form-actions"><button class="btn" onclick="closeHindrancesModal()">Done</button></div>
-    </div>
-</div>
-
-<!-- EDGES MODAL -->
-<div class="modal-overlay" id="edgesModal">
-    <div class="modal" style="width:530px">
-        <h3>Manage Edges — <span id="edgesNpcName"></span></h3>
-        <div id="edgesList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD EDGE</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catEdgeSearch" placeholder="Search edges..." oninput="filterCatalogue('edge')" style="font-size:12px;margin-bottom:4px">
-                <select id="catEdgePick" onchange="fillEdgeFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catEdgeSource" onchange="loadEdgeCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Name</label><input id="newEdgeName" placeholder="Quick"></div>
-            <div class="form-group"><label>Notes</label><input id="newEdgeNotes" placeholder="Requirements, details"></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addEdge()">Add Edge</button></div>
-        <div class="form-actions"><button class="btn" onclick="closeEdgesModal()">Done</button></div>
-    </div>
-</div>
-
-<!-- POWERS MODAL -->
-<div class="modal-overlay" id="powersModal">
-    <div class="modal" style="width:580px">
-        <h3>Manage Powers — <span id="powersNpcName"></span></h3>
-        <div id="powersList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD POWER</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group" style="flex:1">
-                <label>Pick from Catalogue</label>
-                <input id="catPowerSearch" placeholder="Search powers..." oninput="filterCatalogue('power')" style="font-size:12px;margin-bottom:4px">
-                <select id="catPowerPick" onchange="fillPowerFromCat()" style="font-size:12px" size="6">
-                    <option value="">— Custom / Manual —</option>
-                </select>
-            </div>
-            <div class="form-group" style="max-width:140px">
-                <label>Source</label>
-                <select id="catPowerSource" onchange="loadPowerCatalogue()" style="font-size:12px">
-                    <option value="All">All Sources</option>
-                </select>
-            </div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Name</label><input id="newPowerName" placeholder="Bolt"></div>
-            <div class="form-group" style="max-width:80px"><label>PP</label><input id="newPowerPP" type="number" value="0"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Range</label><input id="newPowerRange" placeholder="Smarts×2"></div>
-            <div class="form-group"><label>Duration</label><input id="newPowerDuration" placeholder="Instant"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group"><label>Trapping</label><input id="newPowerTrapping" placeholder="Fire, Shadow, Divine Light"></div>
-            <div class="form-group"><label>Notes</label><input id="newPowerNotes" placeholder=""></div>
-        </div>
-        <div style="margin-top:8px"><button class="btn primary" onclick="addPower()">Add Power</button></div>
-        <div class="form-actions"><button class="btn" onclick="closePowersModal()">Done</button></div>
-    </div>
-</div>
-
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay" id="settingsModal">
     <div class="modal" style="width:550px;max-height:80vh">
@@ -1244,32 +1114,27 @@ function renderNPCDetail(n) {
     const tierText = n.tier === 'Wild Card' ? 'Wild Card' : n.tier;
     const titleLine = n.title ? `<div class="npc-title-line">${n.title}</div>` : '';
     const quote = n.quote ? `<div class="npc-quote">"${n.quote}"</div>` : '';
+    const safeName = n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;");
 
-    // ── LEFT COLUMN: STAT BLOCK ──
+    // ── COLUMN 2: STAT BLOCK ──
     let statsPanel = '';
     if (n.agility > 0) {
         const tough = n.toughness_armor > 0 ? `${n.toughness} (${n.toughness_armor})` : `${n.toughness}`;
-
-        // Derived stat validation (SWADE rules)
         const fightingSkill = (n.skills||[]).find(s => s.name === 'Fighting');
         const fightingDie = fightingSkill ? fightingSkill.die : 0;
         const expectedPace = 6;
         const expectedParry = fightingDie > 0 ? 2 + Math.floor(fightingDie / 2) : 2;
         const expectedToughBase = 2 + Math.floor(n.vigor / 2);
         const expectedToughness = expectedToughBase + (n.toughness_armor || 0);
-
         const paceOk = n.pace === expectedPace;
         const parryOk = n.parry === expectedParry;
         const toughOk = n.toughness === expectedToughness;
-
         const paceColour = paceOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
         const parryColour = parryOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
         const toughColour = toughOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
-
         const paceTip = paceOk ? 'Base 6 ✓' : `Expected ${expectedPace} (base 6) — edge/hindrance?`;
         const parryTip = parryOk ? `2 + Fighting ${dieStr(fightingDie)}/2 = ${expectedParry} ✓` : `Expected ${expectedParry} (2 + ${fightingDie > 0 ? dieStr(fightingDie)+'/2' : 'no Fighting'})`;
         const toughTip = toughOk ? `2 + Vigor ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''} = ${expectedToughness} ✓` : `Expected ${expectedToughness} (2 + ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''})`;
-
         const skills = (n.skills||[]).map(s => `${s.name} ${dieStr(s.die)}`).join(', ');
         const hindrances = (n.hindrance_items||[]).length ?
             `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrance_items.map(h => h.severity === 'Major' ? `<strong>${h.name}</strong> (Major${h.notes ? ', '+h.notes : ''})` : `${h.name}${h.notes ? ' ('+h.notes+')' : ''}`).join(', ')}</div></div>` :
@@ -1286,7 +1151,6 @@ function renderNPCDetail(n) {
             (n.power_points > 0 ? `<div class="stat-section"><span class="stat-section-label">Powers (${n.power_points} PP)${n.arcane_bg ? ' — '+n.arcane_bg : ''}</span><div class="stat-val">${(n.powers||[]).join(', ')} <span style="font-size:10px;color:var(--text-dim)">(legacy)</span></div></div>` : '');
         const specials = (n.special_abilities||[]).length ? `<div class="stat-section"><span class="stat-section-label">Special Abilities</span><div class="stat-val">${n.special_abilities.join(', ')}</div></div>` : '';
         const bennies = n.tier === 'Wild Card' ? `<div class="derived-item"><div class="derived-num">${n.bennies}</div><div class="derived-label">Bennies</div></div>` : '';
-
         statsPanel = `
             <div class="stat-block-panel">
                 <h3>${n.name}${wcLabel} — ${tierText}</h3>
@@ -1296,7 +1160,7 @@ function renderNPCDetail(n) {
                 </div>
                 <div class="stat-section">
                     <span class="stat-section-label">Skills</span>
-                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;")}')">Edit</button></div>
+                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${safeName}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
                     <div class="derived-item" title="${paceTip}"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div></div>
@@ -1310,102 +1174,49 @@ function renderNPCDetail(n) {
         statsPanel = `<div class="stat-block-panel"><h3>${n.name} — ${tierText}</h3><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="openEditModal(${n.id})">Edit NPC</button></div></div>`;
     }
 
-    // Weapons panel
-    let weaponsPanel = '';
-    const safeName = n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;");
-    if (n.weapons && n.weapons.length) {
-        const rows = n.weapons.map(w => {
-            const ap = w.armor_piercing ? `, AP ${w.armor_piercing}` : '';
-            const rng = w.range ? `, Range ${w.range}` : '';
-            const notes = w.notes ? `, ${w.notes}` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${w.name}</span> (${w.damage_str}${ap}${rng}${notes}) <button class="btn sm danger" onclick="deleteWeapon(${w.id})" style="float:right">×</button></div>`;
-        }).join('');
-        weaponsPanel = `<div class="weapons-panel"><h3>Weapons <button class="btn sm" onclick="openWeaponsModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
-    } else {
-        weaponsPanel = `<div class="weapons-panel"><h3>Weapons <button class="btn sm" onclick="openWeaponsModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No weapons defined</div></div>`;
-    }
+    // Summary panels — compact, click header to open workspace
+    const wepSummary = (n.weapons && n.weapons.length) ?
+        n.weapons.map(w => `<div class="weapon-entry"><span class="wep-name">${w.name}</span> (${w.damage_str}${w.armor_piercing ? ', AP '+w.armor_piercing : ''}${w.range ? ', Range '+w.range : ''})</div>`).join('') :
+        '<div style="color:var(--text-dim);font-size:12px">None</div>';
+    const weaponsPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('weapons',${n.id},'${safeName}')">Weapons ✎</h3>${wepSummary}</div>`;
 
-    // Armour panel
-    let armorPanel = '';
-    if (n.armor && n.armor.length) {
-        const rows = n.armor.map(a => {
-            const area = a.area_protected ? ` — ${a.area_protected}` : '';
-            const minStr = a.min_strength ? `, Min Str ${a.min_strength}` : '';
-            const notes = a.notes ? `, ${a.notes}` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${a.name}</span> (+${a.protection}${area}${minStr}${notes}) <button class="btn sm danger" onclick="deleteArmor(${a.id})" style="float:right">×</button></div>`;
-        }).join('');
-        armorPanel = `<div class="weapons-panel"><h3>Armour <button class="btn sm" onclick="openArmorModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
-    } else {
-        armorPanel = `<div class="weapons-panel"><h3>Armour <button class="btn sm" onclick="openArmorModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No armour defined</div></div>`;
-    }
+    const armSummary = (n.armor && n.armor.length) ?
+        n.armor.map(a => `<div class="weapon-entry"><span class="wep-name">${a.name}</span> (+${a.protection}${a.area_protected ? ' — '+a.area_protected : ''})</div>`).join('') :
+        '<div style="color:var(--text-dim);font-size:12px">None</div>';
+    const armorPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('armor',${n.id},'${safeName}')">Armour ✎</h3>${armSummary}</div>`;
 
-    // Gear panel
-    let gearPanel = '';
+    let gearSummary = '';
     if (n.gear_items && n.gear_items.length) {
-        const rows = n.gear_items.map(g => {
-            const qty = g.quantity > 1 ? ` ×${g.quantity}` : '';
-            const notes = g.notes ? ` (${g.notes})` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${g.name}</span>${qty}${notes} <button class="btn sm danger" onclick="deleteGear(${g.id})" style="float:right">×</button></div>`;
-        }).join('');
-        gearPanel = `<div class="weapons-panel"><h3>Gear <button class="btn sm" onclick="openGearModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
+        gearSummary = n.gear_items.map(g => `<div class="weapon-entry">${g.name}${g.quantity > 1 ? ' ×'+g.quantity : ''}</div>`).join('');
+    } else if ((n.gear||[]).length) {
+        gearSummary = n.gear.map(g => `<div class="weapon-entry">${g}</div>`).join('') + '<div style="font-size:10px;color:var(--text-dim)">Legacy</div>';
     } else {
-        // Fall back to legacy gear_json if no managed items
-        const legacyGear = (n.gear||[]);
-        if (legacyGear.length) {
-            const rows = legacyGear.map((g, idx) => `<div class="weapon-entry"><span>${g}</span> <button class="btn sm danger" onclick="deleteLegacyGear(${n.id},${idx})" style="float:right">×</button></div>`).join('');
-            gearPanel = `<div class="weapons-panel"><h3>Gear <button class="btn sm" onclick="openGearModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}<div style="font-size:10px;color:var(--text-dim);margin-top:4px">Legacy data — add items via + Add to convert</div></div>`;
-        } else {
-            gearPanel = `<div class="weapons-panel"><h3>Gear <button class="btn sm" onclick="openGearModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No gear defined</div></div>`;
-        }
+        gearSummary = '<div style="color:var(--text-dim);font-size:12px">None</div>';
     }
+    const gearPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('gear',${n.id},'${safeName}')">Gear ✎</h3>${gearSummary}</div>`;
 
-    // Tactics (goes under stats — it's mechanical)
+    const hindSummary = (n.hindrance_items && n.hindrance_items.length) ?
+        n.hindrance_items.map(h => `<div class="weapon-entry">${h.name} (${h.severity})</div>`).join('') :
+        ((n.hindrances||[]).length ? n.hindrances.map(h => `<div class="weapon-entry">${h}</div>`).join('') + '<div style="font-size:10px;color:var(--text-dim)">Legacy</div>' : '<div style="color:var(--text-dim);font-size:12px">None</div>');
+    const hindrancesPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('hindrances',${n.id},'${safeName}')">Hindrances ✎</h3>${hindSummary}</div>`;
+
+    const edgSummary = (n.edge_items && n.edge_items.length) ?
+        n.edge_items.map(e => `<div class="weapon-entry">${e.name}</div>`).join('') :
+        ((n.edges||[]).length ? n.edges.map(e => `<div class="weapon-entry">${e}</div>`).join('') + '<div style="font-size:10px;color:var(--text-dim)">Legacy</div>' : '<div style="color:var(--text-dim);font-size:12px">None</div>');
+    const edgesPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('edges',${n.id},'${safeName}')">Edges ✎</h3>${edgSummary}</div>`;
+
+    const powSummary = (n.power_items && n.power_items.length) ?
+        n.power_items.map(p => `<div class="weapon-entry">${p.name}${p.trapping ? ' ['+p.trapping+']' : ''}</div>`).join('') :
+        '<div style="color:var(--text-dim);font-size:12px">None</div>';
+    const powersPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('powers',${n.id},'${safeName}')">Powers ✎</h3>${powSummary}</div>`;
+
+    // Tactics
     let tacticsHtml = '';
     if (n.tactics) {
         tacticsHtml = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px 16px;margin-top:10px;font-size:12px"><span style="color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:11px">Tactics</span><div style="margin-top:4px;color:var(--text)">${n.tactics}</div></div>`;
     }
 
-    // Hindrances panel
-    let hindrancesPanel = '';
-    if (n.hindrance_items && n.hindrance_items.length) {
-        const rows = n.hindrance_items.map(h => {
-            const sev = h.severity === 'Major' ? '<span style="color:var(--red);font-weight:600">Major</span>' : '<span style="color:var(--text-dim)">Minor</span>';
-            const notes = h.notes ? ` — ${h.notes}` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${h.name}</span> (${sev}${notes}) <button class="btn sm danger" onclick="deleteHindrance(${h.id})" style="float:right">×</button></div>`;
-        }).join('');
-        hindrancesPanel = `<div class="weapons-panel"><h3>Hindrances <button class="btn sm" onclick="openHindrancesModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
-    } else {
-        hindrancesPanel = `<div class="weapons-panel"><h3>Hindrances <button class="btn sm" onclick="openHindrancesModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No hindrances defined</div></div>`;
-    }
-
-    // Edges panel
-    let edgesPanel = '';
-    if (n.edge_items && n.edge_items.length) {
-        const rows = n.edge_items.map(e => {
-            const notes = e.notes ? ` — ${e.notes}` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${e.name}</span>${notes} <button class="btn sm danger" onclick="deleteEdge(${e.id})" style="float:right">×</button></div>`;
-        }).join('');
-        edgesPanel = `<div class="weapons-panel"><h3>Edges <button class="btn sm" onclick="openEdgesModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
-    } else {
-        edgesPanel = `<div class="weapons-panel"><h3>Edges <button class="btn sm" onclick="openEdgesModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No edges defined</div></div>`;
-    }
-
-    // Powers panel
-    let powersPanel = '';
-    if (n.power_items && n.power_items.length) {
-        const rows = n.power_items.map(p => {
-            const trap = p.trapping ? ` [${p.trapping}]` : '';
-            const pp = p.power_points ? ` ${p.power_points} PP` : '';
-            const dur = p.duration ? `, ${p.duration}` : '';
-            const rng = p.range ? `, ${p.range}` : '';
-            return `<div class="weapon-entry"><span class="wep-name">${p.name}</span>${trap} (${pp}${rng}${dur}) <button class="btn sm danger" onclick="deletePower(${p.id})" style="float:right">×</button></div>`;
-        }).join('');
-        powersPanel = `<div class="weapons-panel"><h3>Powers <button class="btn sm" onclick="openPowersModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
-    } else {
-        powersPanel = `<div class="weapons-panel"><h3>Powers <button class="btn sm" onclick="openPowersModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No powers defined</div></div>`;
-    }
-
-    // Action buttons + production status (bottom of left column)
+    // Action buttons + production status
     const statusHtml = `
         <div class="actions-bar">
             <div style="width:100%;display:flex;gap:12px;margin-bottom:4px">
@@ -1419,7 +1230,19 @@ function renderNPCDetail(n) {
             <button class="btn sm danger" onclick="deleteNPC(${n.id})" style="margin-left:auto">Delete</button>
         </div>`;
 
-    // ── RIGHT COLUMN: NARRATIVE ──
+    // ── COLUMN 4: NARRATIVE + PORTRAIT ──
+    const portraitSrc = n.portrait_path ? `/portraits/${n.portrait_path}?t=${Date.now()}` : '';
+    const portraitHtml = `
+        <div class="portrait-area">
+            <div class="portrait-frame">
+                ${portraitSrc ? `<img src="${portraitSrc}" alt="${n.name}">` : '<span class="portrait-placeholder">No portrait</span>'}
+            </div>
+            <label class="portrait-upload-btn">
+                Upload Portrait <input type="file" accept="image/*" style="display:none" onchange="uploadPortrait(${n.id}, this)">
+            </label>
+            ${portraitSrc ? ` · <span class="portrait-upload-btn" onclick="deletePortrait(${n.id})">Remove</span>` : ''}
+        </div>`;
+
     const desc = n.description ? `<div class="section"><h3>Description</h3><div class="section-content">${n.description}</div></div>` : '';
     const bg = n.background ? `<div class="section"><h3>Background</h3><div class="section-content">${n.background}</div></div>` : '';
 
@@ -1433,28 +1256,21 @@ function renderNPCDetail(n) {
         narrative = `<div class="section"><h3>Story</h3><div class="section-content">${narParts.join('')}</div></div>`;
     }
 
-    // Organisations
     let orgsHtml = '';
     if (n.organisations_detail && n.organisations_detail.length) {
         const tags = n.organisations_detail.map(o => `<span class="tag">${o.name}${o.role ? ' ('+o.role+')' : ''}</span>`).join('');
         orgsHtml = `<div class="section"><h3>Organisations</h3><div class="tag-list">${tags}</div></div>`;
     }
-
-    // Connections
     let connsHtml = '';
     if (n.connections && n.connections.length) {
         const tags = n.connections.map(c => `<span class="tag">${c.name} — ${c.relationship}</span>`).join('');
         connsHtml = `<div class="section"><h3>Connections</h3><div class="tag-list">${tags}</div></div>`;
     }
-
-    // Appearances
     let appsHtml = '';
     if (n.appearances && n.appearances.length) {
         const tags = n.appearances.map(a => `<span class="tag">${a.product}${a.role ? ' ['+a.role+']' : ''}</span>`).join('');
         appsHtml = `<div class="section"><h3>Appearances</h3><div class="tag-list">${tags}</div></div>`;
     }
-
-    // Notes
     let notesHtml = '';
     if (n.notes) {
         notesHtml = `<div class="section"><h3>Notes</h3><div class="section-content" style="font-size:12px;color:var(--text-dim)">${n.notes}</div></div>`;
@@ -1480,7 +1296,14 @@ function renderNPCDetail(n) {
                 ${statusHtml}
                 <div id="exportOutput"></div>
             </div>
+            <div class="col-workspace" id="workspacePanel">
+                <div class="workspace-empty">
+                    <div>Click any panel heading to edit</div>
+                    <div class="ws-hint">Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div>
+                </div>
+            </div>
             <div class="col-narrative">
+                ${portraitHtml}
                 ${desc}${bg}${narrative}${orgsHtml}${connsHtml}${appsHtml}${notesHtml}${source}
             </div>
         </div>`;
@@ -1640,19 +1463,167 @@ async function deleteSkill(skillId) {
 }
 
 // ============================================================
-// WEAPONS
+// WORKSPACE PANEL — Dynamic editing in Column 3
 // ============================================================
-function openWeaponsModal(npcId, name) {
-    currentWeaponsNpcId = npcId;
-    document.getElementById('weaponsNpcName').textContent = name;
-    document.getElementById('weaponsModal').classList.add('active');
-    loadWeapons();
-    loadCatalogueSources().then(() => loadWeaponCatalogue());
+let activeWorkspace = null;
+
+function openWorkspace(type, npcId, name) {
+    activeWorkspace = type;
+    // Reset source-loaded flags since workspace creates fresh elements
+    sourcesLoaded = false;
+    hindSourcesLoaded = false;
+    edgeSourcesLoaded = false;
+    powerSourcesLoaded = false;
+    const ws = document.getElementById('workspacePanel');
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS };
+    if (renderers[type]) {
+        ws.innerHTML = renderers[type](npcId, name);
+        // Trigger load
+        const loaders = {
+            weapons:    () => { currentWeaponsNpcId = npcId; loadWeapons(); loadCatalogueSources().then(() => loadWeaponCatalogue()); },
+            armor:      () => { currentArmorNpcId = npcId; loadArmor(); loadCatalogueSources().then(() => loadArmorCatalogue()); },
+            gear:       () => { currentGearNpcId = npcId; loadGear(); loadCatalogueSources().then(() => loadGearCatalogue()); },
+            hindrances: () => { currentHindrancesNpcId = npcId; loadHindrances(); loadHindranceSources().then(() => loadHindranceCatalogue()); },
+            edges:      () => { currentEdgesNpcId = npcId; loadEdges(); loadEdgeSources().then(() => loadEdgeCatalogue()); },
+            powers:     () => { currentPowersNpcId = npcId; loadPowers(); loadPowerSources().then(() => loadPowerCatalogue()); },
+        };
+        loaders[type]();
+    }
 }
-function closeWeaponsModal() {
-    document.getElementById('weaponsModal').classList.remove('active');
+function closeWorkspace() {
+    activeWorkspace = null;
+    const ws = document.getElementById('workspacePanel');
+    if (ws) ws.innerHTML = '<div class="workspace-empty"><div>Click any panel heading to edit</div><div class="ws-hint">Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div></div>';
     if (currentNPC) selectNPC(currentNPC.id);
 }
+
+function renderWeaponsWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Weapons — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="weaponsList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD WEAPON</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catWeaponSearch" placeholder="Search weapons..." oninput="filterCatalogue('weapon')" style="font-size:12px;margin-bottom:4px">
+                <select id="catWeaponPick" onchange="fillWeaponFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catWeaponSource" onchange="loadWeaponCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-row"><div class="form-group"><label>Name</label><input id="newWepName" placeholder="Longsword"></div><div class="form-group"><label>Damage</label><input id="newWepDamage" placeholder="Str+d8"></div></div>
+        <div class="form-row"><div class="form-group"><label>FG Damagedice</label><input id="newWepDice" placeholder="d8+d8"></div><div class="form-group" style="max-width:80px"><label>AP</label><input id="newWepAP" type="number" value="0"></div><div class="form-group" style="max-width:100px"><label>Type</label><select id="newWepType"><option>Melee</option><option>Ranged</option><option>Thrown</option></select></div></div>
+        <div class="form-row"><div class="form-group"><label>Range</label><input id="newWepRange" placeholder="15/30/60"></div><div class="form-group" style="max-width:80px"><label>Reach</label><input id="newWepReach" type="number" value="0"></div><div class="form-group"><label>Notes</label><input id="newWepNotes" placeholder="Two hands, Reload 1"></div></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addWeapon()">Add Weapon</button></div>`;
+}
+function renderArmorWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Armour — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="armorList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ARMOUR</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catArmorSearch" placeholder="Search armour..." oninput="filterCatalogue('armor')" style="font-size:12px;margin-bottom:4px">
+                <select id="catArmorPick" onchange="fillArmorFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catArmorSource" onchange="loadArmorCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-row"><div class="form-group"><label>Name</label><input id="newArmorName" placeholder="Chain Hauberk"></div><div class="form-group" style="max-width:80px"><label>Prot</label><input id="newArmorProt" type="number" value="2"></div></div>
+        <div class="form-row"><div class="form-group"><label>Area</label><input id="newArmorArea" placeholder="Torso, Arms, Legs"></div><div class="form-group"><label>Min Str</label><input id="newArmorStr" placeholder="d8"></div></div>
+        <div class="form-row"><div class="form-group" style="max-width:80px"><label>Weight</label><input id="newArmorWeight" type="number" value="0" step="0.5"></div><div class="form-group"><label>Cost</label><input id="newArmorCost" placeholder="300₡"></div><div class="form-group"><label>Notes</label><input id="newArmorNotes"></div></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addArmor()">Add Armour</button></div>`;
+}
+function renderGearWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Gear — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="gearList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ITEM</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catGearSearch" placeholder="Search gear..." oninput="filterCatalogue('gear')" style="font-size:12px;margin-bottom:4px">
+                <select id="catGearPick" onchange="fillGearFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catGearSource" onchange="loadGearCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-row"><div class="form-group"><label>Name</label><input id="newGearName" placeholder="Rope (50 feet)"></div><div class="form-group" style="max-width:60px"><label>Qty</label><input id="newGearQty" type="number" value="1"></div></div>
+        <div class="form-row"><div class="form-group" style="max-width:80px"><label>Weight</label><input id="newGearWeight" type="number" value="0" step="0.5"></div><div class="form-group"><label>Cost</label><input id="newGearCost" placeholder="10₡"></div><div class="form-group"><label>Notes</label><input id="newGearNotes"></div></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addGear()">Add Item</button></div>`;
+}
+function renderHindrancesWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Hindrances — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="hindrancesList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD HINDRANCE</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catHindranceSearch" placeholder="Search hindrances..." oninput="filterCatalogue('hindrance')" style="font-size:12px;margin-bottom:4px">
+                <select id="catHindrancePick" onchange="fillHindranceFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catHindranceSource" onchange="loadHindranceCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-row"><div class="form-group"><label>Name</label><input id="newHindName" placeholder="Loyal"></div><div class="form-group" style="max-width:120px"><label>Severity</label><select id="newHindSeverity"><option>Minor</option><option>Major</option></select></div></div>
+        <div class="form-group"><label>Notes</label><input id="newHindNotes" placeholder="Optional details"></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addHindrance()">Add Hindrance</button></div>`;
+}
+function renderEdgesWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Edges — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="edgesList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD EDGE</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catEdgeSearch" placeholder="Search edges..." oninput="filterCatalogue('edge')" style="font-size:12px;margin-bottom:4px">
+                <select id="catEdgePick" onchange="fillEdgeFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catEdgeSource" onchange="loadEdgeCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-group"><label>Name</label><input id="newEdgeName" placeholder="Command"></div>
+        <div class="form-group"><label>Notes</label><input id="newEdgeNotes" placeholder="Requirements, details"></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addEdge()">Add Edge</button></div>`;
+}
+function renderPowersWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Powers — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="powersList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD POWER</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1"><label>Pick from Catalogue</label>
+                <input id="catPowerSearch" placeholder="Search powers..." oninput="filterCatalogue('power')" style="font-size:12px;margin-bottom:4px">
+                <select id="catPowerPick" onchange="fillPowerFromCat()" style="font-size:12px" size="6"><option value="">— Custom / Manual —</option></select>
+            </div>
+            <div class="form-group" style="max-width:140px"><label>Source</label>
+                <select id="catPowerSource" onchange="loadPowerCatalogue()" style="font-size:12px"><option value="All">All Sources</option></select>
+            </div>
+        </div>
+        <div class="form-row"><div class="form-group"><label>Name</label><input id="newPowerName" placeholder="Bolt"></div><div class="form-group" style="max-width:80px"><label>PP</label><input id="newPowerPP" type="number" value="0"></div></div>
+        <div class="form-row"><div class="form-group"><label>Range</label><input id="newPowerRange" placeholder="Smarts x2"></div><div class="form-group"><label>Duration</label><input id="newPowerDuration" placeholder="Instant"></div></div>
+        <div class="form-row"><div class="form-group"><label>Trapping</label><input id="newPowerTrapping" placeholder="Fire, Shadow, etc."></div><div class="form-group"><label>Notes</label><input id="newPowerNotes"></div></div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addPower()">Add Power</button></div>`;
+}
+
+// ============================================================
+// PORTRAIT
+// ============================================================
+async function uploadPortrait(npcId, input) {
+    if (!input.files || !input.files[0]) return;
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+    const resp = await fetch(`/api/npcs/${npcId}/portrait`, { method: 'POST', body: formData });
+    const data = await resp.json();
+    if (data.success && currentNPC) selectNPC(currentNPC.id);
+}
+async function deletePortrait(npcId) {
+    await api(`/api/npcs/${npcId}/portrait`, 'DELETE');
+    if (currentNPC) selectNPC(currentNPC.id);
+}
+
+// ============================================================
+// WEAPONS
+// ============================================================
+function openWeaponsModal(npcId, name) { openWorkspace('weapons', npcId, name); }
+function closeWeaponsModal() { closeWorkspace(); }
 async function loadWeapons() {
     const weapons = await api(`/api/npcs/${currentWeaponsNpcId}/weapons`);
     const el = document.getElementById('weaponsList');
@@ -1681,24 +1652,15 @@ async function addWeapon() {
 }
 async function deleteWeapon(weaponId) {
     await api(`/api/weapons/${weaponId}`, 'DELETE');
-    if (document.getElementById('weaponsModal').classList.contains('active')) loadWeapons();
+    if (activeWorkspace === 'weapons') loadWeapons();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 
 // ============================================================
 // ARMOUR
 // ============================================================
-function openArmorModal(npcId, name) {
-    currentArmorNpcId = npcId;
-    document.getElementById('armorNpcName').textContent = name;
-    document.getElementById('armorModal').classList.add('active');
-    loadArmor();
-    loadCatalogueSources().then(() => loadArmorCatalogue());
-}
-function closeArmorModal() {
-    document.getElementById('armorModal').classList.remove('active');
-    if (currentNPC) selectNPC(currentNPC.id);
-}
+function openArmorModal(npcId, name) { openWorkspace('armor', npcId, name); }
+function closeArmorModal() { closeWorkspace(); }
 async function loadArmor() {
     const armor = await api(`/api/npcs/${currentArmorNpcId}/armor`);
     const el = document.getElementById('armorList');
@@ -1726,24 +1688,15 @@ async function addArmor() {
 }
 async function deleteArmor(armorId) {
     await api(`/api/armor/${armorId}`, 'DELETE');
-    if (document.getElementById('armorModal').classList.contains('active')) loadArmor();
+    if (activeWorkspace === 'armor') loadArmor();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 
 // ============================================================
 // GEAR
 // ============================================================
-function openGearModal(npcId, name) {
-    currentGearNpcId = npcId;
-    document.getElementById('gearNpcName').textContent = name;
-    document.getElementById('gearModal').classList.add('active');
-    loadGear();
-    loadCatalogueSources().then(() => loadGearCatalogue());
-}
-function closeGearModal() {
-    document.getElementById('gearModal').classList.remove('active');
-    if (currentNPC) selectNPC(currentNPC.id);
-}
+function openGearModal(npcId, name) { openWorkspace('gear', npcId, name); }
+function closeGearModal() { closeWorkspace(); }
 async function loadGear() {
     const gear = await api(`/api/npcs/${currentGearNpcId}/gear`);
     const el = document.getElementById('gearList');
@@ -1769,7 +1722,7 @@ async function addGear() {
 }
 async function deleteGear(gearId) {
     await api(`/api/gear/${gearId}`, 'DELETE');
-    if (document.getElementById('gearModal').classList.contains('active')) loadGear();
+    if (activeWorkspace === 'gear') loadGear();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 
@@ -1912,17 +1865,8 @@ function fillGearFromCat() {
 // ============================================================
 // HINDRANCES
 // ============================================================
-function openHindrancesModal(npcId, name) {
-    currentHindrancesNpcId = npcId;
-    document.getElementById('hindrancesNpcName').textContent = name;
-    document.getElementById('hindrancesModal').classList.add('active');
-    loadHindrances();
-    loadHindranceSources().then(() => loadHindranceCatalogue());
-}
-function closeHindrancesModal() {
-    document.getElementById('hindrancesModal').classList.remove('active');
-    if (currentNPC) selectNPC(currentNPC.id);
-}
+function openHindrancesModal(npcId, name) { openWorkspace('hindrances', npcId, name); }
+function closeHindrancesModal() { closeWorkspace(); }
 async function loadHindrances() {
     const items = await api(`/api/npcs/${currentHindrancesNpcId}/hindrances`);
     const el = document.getElementById('hindrancesList');
@@ -1946,7 +1890,7 @@ async function addHindrance() {
 async function deleteHindrance(hindId) {
     const npcId = currentHindrancesNpcId || currentNPC.id;
     await api(`/api/npcs/${npcId}/hindrances/${hindId}`, 'DELETE');
-    if (document.getElementById('hindrancesModal').classList.contains('active')) loadHindrances();
+    if (activeWorkspace === 'hindrances') loadHindrances();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 async function loadHindranceSources() {
@@ -1992,17 +1936,8 @@ function fillHindranceFromCat() {
 // ============================================================
 // EDGES
 // ============================================================
-function openEdgesModal(npcId, name) {
-    currentEdgesNpcId = npcId;
-    document.getElementById('edgesNpcName').textContent = name;
-    document.getElementById('edgesModal').classList.add('active');
-    loadEdges();
-    loadEdgeSources().then(() => loadEdgeCatalogue());
-}
-function closeEdgesModal() {
-    document.getElementById('edgesModal').classList.remove('active');
-    if (currentNPC) selectNPC(currentNPC.id);
-}
+function openEdgesModal(npcId, name) { openWorkspace('edges', npcId, name); }
+function closeEdgesModal() { closeWorkspace(); }
 async function loadEdges() {
     const items = await api(`/api/npcs/${currentEdgesNpcId}/edges`);
     const el = document.getElementById('edgesList');
@@ -2024,7 +1959,7 @@ async function addEdge() {
 async function deleteEdge(edgeId) {
     const npcId = currentEdgesNpcId || currentNPC.id;
     await api(`/api/npcs/${npcId}/edges/${edgeId}`, 'DELETE');
-    if (document.getElementById('edgesModal').classList.contains('active')) loadEdges();
+    if (activeWorkspace === 'edges') loadEdges();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 async function loadEdgeSources() {
@@ -2069,17 +2004,8 @@ function fillEdgeFromCat() {
 // ============================================================
 // POWERS
 // ============================================================
-function openPowersModal(npcId, name) {
-    currentPowersNpcId = npcId;
-    document.getElementById('powersNpcName').textContent = name;
-    document.getElementById('powersModal').classList.add('active');
-    loadPowers();
-    loadPowerSources().then(() => loadPowerCatalogue());
-}
-function closePowersModal() {
-    document.getElementById('powersModal').classList.remove('active');
-    if (currentNPC) selectNPC(currentNPC.id);
-}
+function openPowersModal(npcId, name) { openWorkspace('powers', npcId, name); }
+function closePowersModal() { closeWorkspace(); }
 async function loadPowers() {
     const items = await api(`/api/npcs/${currentPowersNpcId}/powers`);
     const el = document.getElementById('powersList');
@@ -2106,7 +2032,7 @@ async function addPower() {
 async function deletePower(powerId) {
     const npcId = currentPowersNpcId || currentNPC.id;
     await api(`/api/npcs/${npcId}/powers/${powerId}`, 'DELETE');
-    if (document.getElementById('powersModal').classList.contains('active')) loadPowers();
+    if (activeWorkspace === 'powers') loadPowers();
     else if (currentNPC) selectNPC(currentNPC.id);
 }
 async function loadPowerSources() {
@@ -3047,6 +2973,50 @@ def api_open_github_desktop():
             return jsonify({"success": False, "message": "Please open GitHub Desktop manually."})
     except Exception as e:
         return jsonify({"success": False, "message": f"Could not open GitHub Desktop: {str(e)}"})
+
+# ============================================================
+# PORTRAIT MANAGEMENT
+# ============================================================
+
+@app.route('/portraits/<path:filename>')
+def serve_portrait(filename):
+    return send_from_directory(BASE_DIR / 'portraits', filename)
+
+@app.route('/api/npcs/<int:npc_id>/portrait', methods=['POST'])
+def api_upload_portrait(npc_id):
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({"error": "Empty filename"}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
+        return jsonify({"error": "Unsupported image format"}), 400
+    safe_name = f"npc_{npc_id}{ext}"
+    portraits_dir = BASE_DIR / 'portraits'
+    portraits_dir.mkdir(exist_ok=True)
+    # Remove old portrait if different extension
+    for old in portraits_dir.glob(f"npc_{npc_id}.*"):
+        old.unlink()
+    f.save(portraits_dir / safe_name)
+    conn = get_db()
+    conn.execute("UPDATE npcs SET portrait_path = ? WHERE id = ?", (safe_name, npc_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True, "path": f"/portraits/{safe_name}"})
+
+@app.route('/api/npcs/<int:npc_id>/portrait', methods=['DELETE'])
+def api_delete_portrait(npc_id):
+    conn = get_db()
+    row = conn.execute("SELECT portrait_path FROM npcs WHERE id = ?", (npc_id,)).fetchone()
+    if row and row['portrait_path']:
+        p = BASE_DIR / 'portraits' / row['portrait_path']
+        if p.exists():
+            p.unlink()
+    conn.execute("UPDATE npcs SET portrait_path = NULL WHERE id = ?", (npc_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 # ============================================================
 # LAUNCH
