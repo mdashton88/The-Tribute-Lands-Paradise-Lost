@@ -211,11 +211,12 @@ def add_npc_from_dict(data):
     
     skills = data.pop('skills', {})
     weapons = data.pop('weapons', [])
+    armor = data.pop('armor', [])
     orgs = data.pop('organisations', [])
     appearances = data.pop('appearances', [])
     
     # Build insert from whatever fields are provided
-    fields = [k for k in data.keys() if k not in ('skills', 'weapons', 'organisations', 'appearances')]
+    fields = [k for k in data.keys() if k not in ('skills', 'weapons', 'armor', 'organisations', 'appearances')]
     placeholders = ', '.join(['?'] * len(fields))
     columns = ', '.join(fields)
     values = [data[f] for f in fields]
@@ -246,6 +247,14 @@ def add_npc_from_dict(data):
         """, (npc_id, w['name'], w['damage_str'], w['damagedice'],
               w.get('ap', 0), w.get('trait_type', 'Melee'),
               w.get('range'), w.get('reach', 0), w.get('notes')))
+    
+    # Add armor
+    for a in armor:
+        conn.execute("""
+            INSERT INTO npc_armor (npc_id, name, protection, area_protected, min_str, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (npc_id, a['name'], a.get('protection', 0), a.get('area_protected'),
+              a.get('min_str'), a.get('notes')))
     
     conn.commit()
     conn.close()
