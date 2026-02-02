@@ -2,6 +2,9 @@
 color 0A
 title Tribute Lands NPC Database
 
+REM Change to the directory containing this batch file
+cd /d "%~dp0"
+
 echo.
 echo ========================================
 echo   TRIBUTE LANDS NPC DATABASE
@@ -38,20 +41,15 @@ echo [3/4] Rebuilding database...
 if exist tribute_lands_npcs.db (
     del tribute_lands_npcs.db >nul 2>&1
 )
-echo.
-python seed_data.py
+python seed_data.py >nul 2>&1
 if errorlevel 1 (
     color 0C
     echo.
-    echo ========================================
-    echo   ERROR: Database build failed!
-    echo   See error message above.
-    echo ========================================
+    echo ERROR: Failed to build database!
     echo.
     pause
     exit /b 1
 )
-echo.
 echo       Database rebuilt with latest data.
 
 REM Step 4: Start server
