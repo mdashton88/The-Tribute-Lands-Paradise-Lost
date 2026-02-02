@@ -521,13 +521,14 @@ HTML_TEMPLATE = '''
         /* --- WIDTH GAUGE --- */
         .col-gauge {
             position: absolute;
-            top: 2px;
-            right: 6px;
-            font-size: 9px;
-            color: var(--text-dim);
-            opacity: 0.6;
+            top: 4px;
+            right: 8px;
+            font-size: 11px;
+            color: var(--accent);
+            opacity: 0.85;
             pointer-events: none;
             font-family: monospace;
+            font-weight: 600;
             z-index: 5;
         }
         .col-workspace .col-gauge { right: 22px; }
