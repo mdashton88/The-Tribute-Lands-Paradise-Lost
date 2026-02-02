@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.2.0",
+    "version": "1.3.0",
     "updated": "2025-02-02",
-    "changes": "Settings panel with version tracking; quote escaping fix"
+    "changes": "Added Open GitHub button in Settings"
 }
 
 import sqlite3
@@ -1858,8 +1858,11 @@ async function showSettingsTab(tab) {
                     <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.powers.changes}</td>
                 </tr>
             </table>
-            <div style="margin-top:16px;padding:8px;background:var(--bg-dark);border-radius:4px;font-size:11px;color:var(--text-dim)">
-                Pull latest from GitHub Desktop and restart to update.
+            <div style="margin-top:16px;padding:12px;background:var(--bg-dark);border-radius:4px;display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:12px;color:var(--text-dim)">Pull latest from GitHub and restart to update</span>
+                <button class="btn primary" onclick="openGitHub()" style="font-size:12px">
+                    🔄 Open GitHub
+                </button>
             </div>
         `;
     } else if (tab === 'about') {
@@ -1876,6 +1879,10 @@ async function showSettingsTab(tab) {
             </div>
         `;
     }
+}
+
+function openGitHub() {
+    window.open('https://github.com/mdashton88/The-Tribute-Lands-Paradise-Lost', '_blank');
 }
 
 // ============================================================
