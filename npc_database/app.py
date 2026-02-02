@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.3.0",
+    "version": "1.4.0",
     "updated": "2025-02-02",
-    "changes": "Added Open GitHub button in Settings"
+    "changes": "One-click updates: git pull from Settings panel"
 }
 
 import sqlite3
@@ -21,6 +21,7 @@ import os
 import sys
 import webbrowser
 import threading
+import subprocess
 from pathlib import Path
 from flask import Flask, render_template_string, request, jsonify, send_file, redirect, url_for
 
@@ -1858,11 +1859,19 @@ async function showSettingsTab(tab) {
                     <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.powers.changes}</td>
                 </tr>
             </table>
-            <div style="margin-top:16px;padding:12px;background:var(--bg-dark);border-radius:4px;display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:12px;color:var(--text-dim)">Pull latest from GitHub and restart to update</span>
-                <button class="btn primary" onclick="openGitHub()" style="font-size:12px">
-                    🔄 Open GitHub
-                </button>
+            <div id="updateSection" style="margin-top:16px;padding:12px;background:var(--bg-dark);border-radius:4px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <span style="font-size:12px;color:var(--text-dim)">Check for updates from GitHub</span>
+                    <div>
+                        <button class="btn" onclick="openGitHub()" style="font-size:12px;margin-right:8px">
+                            📂 View Repo
+                        </button>
+                        <button class="btn primary" onclick="runUpdate()" id="updateBtn" style="font-size:12px">
+                            🔄 Check for Updates
+                        </button>
+                    </div>
+                </div>
+                <div id="updateStatus" style="margin-top:8px;display:none"></div>
             </div>
         `;
     } else if (tab === 'about') {
@@ -1883,6 +1892,39 @@ async function showSettingsTab(tab) {
 
 function openGitHub() {
     window.open('https://github.com/mdashton88/The-Tribute-Lands-Paradise-Lost', '_blank');
+}
+
+async function runUpdate() {
+    const btn = document.getElementById('updateBtn');
+    const status = document.getElementById('updateStatus');
+    
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Checking...';
+    status.style.display = 'block';
+    status.innerHTML = '<span style="color:var(--text-dim)">Connecting to GitHub...</span>';
+    
+    try {
+        const resp = await fetch('/api/update', {method: 'POST'});
+        const data = await resp.json();
+        
+        if (data.success) {
+            if (data.needs_restart) {
+                status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>' +
+                    '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' + 
+                    (data.details || '') + '</span>' +
+                    '<br><button class="btn primary" onclick="location.reload()" style="margin-top:8px;font-size:12px">🔄 Restart Now</button>';
+            } else {
+                status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>';
+            }
+        } else {
+            status.innerHTML = '<span style="color:var(--danger)">✗ ' + data.message + '</span>';
+        }
+    } catch (err) {
+        status.innerHTML = '<span style="color:var(--danger)">✗ Connection error: ' + err.message + '</span>';
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = '🔄 Check for Updates';
 }
 
 // ============================================================
@@ -2262,6 +2304,34 @@ def api_versions():
         "edges": EDGES_VERSION,
         "powers": POWERS_VERSION
     })
+
+@app.route('/api/update', methods=['POST'])
+def api_update():
+    """Run git pull to update from GitHub."""
+    try:
+        # Run git pull from the app directory
+        result = subprocess.run(
+            ['git', 'pull'],
+            cwd=APP_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        output = result.stdout.strip()
+        if result.returncode == 0:
+            if 'Already up to date' in output:
+                return jsonify({"success": True, "message": "Already up to date!", "needs_restart": False})
+            else:
+                return jsonify({"success": True, "message": "Updates pulled! Restart to apply.", "needs_restart": True, "details": output})
+        else:
+            return jsonify({"success": False, "message": f"Git error: {result.stderr.strip()}"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "message": "Update timed out. Check your connection."})
+    except FileNotFoundError:
+        return jsonify({"success": False, "message": "Git not found. Please install Git or use GitHub Desktop manually."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 # ============================================================
 # LAUNCH
