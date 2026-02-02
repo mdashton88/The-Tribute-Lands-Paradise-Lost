@@ -4,6 +4,12 @@ Seed the Tribute Lands NPC database with existing Ammaria characters.
 Run after init to populate with known NPCs from the module content.
 """
 
+VERSION = {
+    "version": "1.1.0",
+    "updated": "2025-02-02",
+    "changes": "Added Saltlands pre-gen characters"
+}
+
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
