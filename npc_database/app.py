@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.4.0",
+    "version": "1.4.1",
     "updated": "2025-02-02",
-    "changes": "One-click updates: git pull from Settings panel"
+    "changes": "GitHub Desktop fallback for one-click updates"
 }
 
 import sqlite3
@@ -155,6 +155,9 @@ HTML_TEMPLATE = '''
             --tag-wc: #c49a4a;
             --tag-extra: #5a8a5a;
             --tag-walkon: #666;
+            --success: #5a5;
+            --warning: #c90;
+            --danger: #c44;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1916,6 +1919,12 @@ async function runUpdate() {
             } else {
                 status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>';
             }
+        } else if (data.use_desktop) {
+            // Git CLI not found — offer to open GitHub Desktop
+            status.innerHTML = '<span style="color:var(--warning)">Git CLI not installed.</span>' +
+                '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' +
+                'Click below to open GitHub Desktop, then pull and restart.</span>' +
+                '<br><button class="btn primary" onclick="openGitHubDesktop()" style="margin-top:8px;font-size:12px">📂 Open GitHub Desktop</button>';
         } else {
             status.innerHTML = '<span style="color:var(--danger)">✗ ' + data.message + '</span>';
         }
@@ -1925,6 +1934,23 @@ async function runUpdate() {
     
     btn.disabled = false;
     btn.innerHTML = '🔄 Check for Updates';
+}
+
+async function openGitHubDesktop() {
+    const status = document.getElementById('updateStatus');
+    try {
+        const resp = await fetch('/api/open-github-desktop', {method: 'POST'});
+        const data = await resp.json();
+        if (data.success) {
+            status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>' +
+                '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' +
+                'Pull changes in GitHub Desktop, then restart the app.</span>';
+        } else {
+            status.innerHTML = '<span style="color:var(--danger)">✗ ' + data.message + '</span>';
+        }
+    } catch (err) {
+        status.innerHTML = '<span style="color:var(--danger)">✗ ' + err.message + '</span>';
+    }
 }
 
 // ============================================================
@@ -2329,9 +2355,32 @@ def api_update():
     except subprocess.TimeoutExpired:
         return jsonify({"success": False, "message": "Update timed out. Check your connection."})
     except FileNotFoundError:
-        return jsonify({"success": False, "message": "Git not found. Please install Git or use GitHub Desktop manually."})
+        # Git CLI not found — try to open GitHub Desktop instead
+        return jsonify({"success": False, "message": "git_not_found", "use_desktop": True})
     except Exception as e:
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
+
+@app.route('/api/open-github-desktop', methods=['POST'])
+def api_open_github_desktop():
+    """Open GitHub Desktop to the repository."""
+    try:
+        # Get the repo root (parent of npc_database)
+        repo_dir = APP_DIR.parent
+        
+        if sys.platform == 'win32':
+            # Try to open GitHub Desktop on Windows
+            # Method 1: Use the github: URI scheme
+            os.startfile(f'github-windows://openRepo/{repo_dir}')
+            return jsonify({"success": True, "message": "Opening GitHub Desktop..."})
+        elif sys.platform == 'darwin':
+            # macOS
+            subprocess.run(['open', '-a', 'GitHub Desktop', str(repo_dir)])
+            return jsonify({"success": True, "message": "Opening GitHub Desktop..."})
+        else:
+            # Linux - unlikely but handle it
+            return jsonify({"success": False, "message": "Please open GitHub Desktop manually."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Could not open GitHub Desktop: {str(e)}"})
 
 # ============================================================
 # LAUNCH
