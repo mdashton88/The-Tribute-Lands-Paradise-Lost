@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.5.0",
+    "version": "1.5.1",
     "updated": "2025-02-02",
-    "changes": "Managed Hindrances, Edges, Powers — catalogue pickers, modal management, stat block integration"
+    "changes": "Live search filtering on all 6 catalogue pickers"
 }
 
 import sqlite3
@@ -912,7 +912,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catWeaponPick" onchange="fillWeaponFromCat()" style="font-size:12px">
+                <input id="catWeaponSearch" placeholder="Search weapons..." oninput="filterCatalogue('weapon')" style="font-size:12px;margin-bottom:4px">
+                <select id="catWeaponPick" onchange="fillWeaponFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -953,7 +954,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catArmorPick" onchange="fillArmorFromCat()" style="font-size:12px">
+                <input id="catArmorSearch" placeholder="Search armour..." oninput="filterCatalogue('armor')" style="font-size:12px;margin-bottom:4px">
+                <select id="catArmorPick" onchange="fillArmorFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -991,7 +993,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catGearPick" onchange="fillGearFromCat()" style="font-size:12px">
+                <input id="catGearSearch" placeholder="Search gear..." oninput="filterCatalogue('gear')" style="font-size:12px;margin-bottom:4px">
+                <select id="catGearPick" onchange="fillGearFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -1025,7 +1028,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catHindrancePick" onchange="fillHindranceFromCat()" style="font-size:12px">
+                <input id="catHindranceSearch" placeholder="Search hindrances..." oninput="filterCatalogue('hindrance')" style="font-size:12px;margin-bottom:4px">
+                <select id="catHindrancePick" onchange="fillHindranceFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -1059,7 +1063,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catEdgePick" onchange="fillEdgeFromCat()" style="font-size:12px">
+                <input id="catEdgeSearch" placeholder="Search edges..." oninput="filterCatalogue('edge')" style="font-size:12px;margin-bottom:4px">
+                <select id="catEdgePick" onchange="fillEdgeFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -1088,7 +1093,8 @@ HTML_TEMPLATE = '''
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
             <div class="form-group" style="flex:1">
                 <label>Pick from Catalogue</label>
-                <select id="catPowerPick" onchange="fillPowerFromCat()" style="font-size:12px">
+                <input id="catPowerSearch" placeholder="Search powers..." oninput="filterCatalogue('power')" style="font-size:12px;margin-bottom:4px">
+                <select id="catPowerPick" onchange="fillPowerFromCat()" style="font-size:12px" size="6">
                     <option value="">— Custom / Manual —</option>
                 </select>
             </div>
@@ -2144,6 +2150,52 @@ function fillPowerFromCat() {
     document.getElementById('newPowerDuration').value = p.duration || '';
     document.getElementById('newPowerTrapping').value = '';
     document.getElementById('newPowerNotes').value = p.summary || '';
+}
+
+// ============================================================
+// CATALOGUE SEARCH FILTER (universal for all 6 catalogues)
+// ============================================================
+function filterCatalogue(type) {
+    const config = {
+        weapon:    { cache: catWeaponsCache,    pickId: 'catWeaponPick',    searchId: 'catWeaponSearch',    label: w => `${w.name} (${w.damage_str}${w.ap ? ', AP '+w.ap : ''})` },
+        armor:     { cache: catArmorCache,      pickId: 'catArmorPick',     searchId: 'catArmorSearch',     label: a => `${a.name} (+${a.protection})` },
+        gear:      { cache: catGearCache,       pickId: 'catGearPick',      searchId: 'catGearSearch',      label: g => g.name },
+        hindrance: { cache: catHindrancesCache, pickId: 'catHindrancePick', searchId: 'catHindranceSearch', label: h => `${h.name} (${h.severity})` },
+        edge:      { cache: catEdgesCache,      pickId: 'catEdgePick',      searchId: 'catEdgeSearch',      label: e => `${e.name} (${e.rank}, ${e.type})` },
+        power:     { cache: catPowersCache,     pickId: 'catPowerPick',     searchId: 'catPowerSearch',     label: p => `${p.name} (${p.pp} PP, ${p.rank})` },
+    };
+    const c = config[type];
+    if (!c) return;
+    const query = document.getElementById(c.searchId).value.toLowerCase().trim();
+    const sel = document.getElementById(c.pickId);
+    sel.innerHTML = '<option value="">— Custom / Manual —</option>';
+    
+    const filtered = query ? c.cache.filter((item, i) => {
+        const text = c.label(item).toLowerCase();
+        return text.includes(query);
+    }) : c.cache;
+    
+    let lastSource = '';
+    filtered.forEach(item => {
+        const origIdx = c.cache.indexOf(item);
+        if (item.source !== lastSource) {
+            const grp = document.createElement('optgroup');
+            grp.label = item.source;
+            sel.appendChild(grp);
+            lastSource = item.source;
+        }
+        const opt = document.createElement('option');
+        opt.value = origIdx;
+        opt.textContent = c.label(item);
+        const grps = sel.querySelectorAll('optgroup');
+        grps[grps.length-1].appendChild(opt);
+    });
+    
+    if (query && filtered.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = ''; opt.textContent = '— No matches —'; opt.disabled = true;
+        sel.appendChild(opt);
+    }
 }
 
 // ============================================================
