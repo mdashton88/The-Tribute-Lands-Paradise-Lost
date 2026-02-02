@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "1.4.1",
+    "version": "1.5.0",
     "updated": "2025-02-02",
-    "changes": "GitHub Desktop fallback for one-click updates"
+    "changes": "Managed Hindrances, Edges, Powers — catalogue pickers, modal management, stat block integration"
 }
 
 import sqlite3
@@ -28,8 +28,13 @@ from flask import Flask, render_template_string, request, jsonify, send_file, re
 # Equipment catalogue — weapons, armor, gear from all sources
 from equipment import WEAPONS as CAT_WEAPONS, ARMOR as CAT_ARMOR, GEAR as CAT_GEAR, SOURCES as CAT_SOURCES
 from equipment import VERSION as EQUIPMENT_VERSION
+
+# Character options catalogues
+from hindrances import HINDRANCES as CAT_HINDRANCES, SOURCES as HINDRANCE_SOURCES
 from hindrances import VERSION as HINDRANCES_VERSION
+from edges import EDGES as CAT_EDGES, SOURCES as EDGE_SOURCES
 from edges import VERSION as EDGES_VERSION
+from powers import POWERS as CAT_POWERS, SOURCES as POWER_SOURCES
 from powers import VERSION as POWERS_VERSION
 
 # Try to import seed_data VERSION
@@ -110,6 +115,41 @@ def init_db_if_needed():
             )""")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_npc_gear_npc ON npc_gear(npc_id)")
             print("  Migrated: npc_gear table added")
+        if 'npc_hindrances' not in tables:
+            conn.execute("""CREATE TABLE IF NOT EXISTS npc_hindrances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'Minor',
+                source TEXT,
+                notes TEXT
+            )""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_npc_hindrances_npc ON npc_hindrances(npc_id)")
+            print("  Migrated: npc_hindrances table added")
+        if 'npc_edges' not in tables:
+            conn.execute("""CREATE TABLE IF NOT EXISTS npc_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                source TEXT,
+                notes TEXT
+            )""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_npc_edges_npc ON npc_edges(npc_id)")
+            print("  Migrated: npc_edges table added")
+        if 'npc_powers' not in tables:
+            conn.execute("""CREATE TABLE IF NOT EXISTS npc_powers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                power_points INTEGER DEFAULT 0,
+                range TEXT,
+                duration TEXT,
+                trapping TEXT,
+                source TEXT,
+                notes TEXT
+            )""")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_npc_powers_npc ON npc_powers(npc_id)")
+            print("  Migrated: npc_powers table added")
         conn.commit()
         conn.close()
 
@@ -976,6 +1016,106 @@ HTML_TEMPLATE = '''
     </div>
 </div>
 
+<!-- HINDRANCES MODAL -->
+<div class="modal-overlay" id="hindrancesModal">
+    <div class="modal" style="width:530px">
+        <h3>Manage Hindrances — <span id="hindrancesNpcName"></span></h3>
+        <div id="hindrancesList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD HINDRANCE</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1">
+                <label>Pick from Catalogue</label>
+                <select id="catHindrancePick" onchange="fillHindranceFromCat()" style="font-size:12px">
+                    <option value="">— Custom / Manual —</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width:140px">
+                <label>Source</label>
+                <select id="catHindranceSource" onchange="loadHindranceCatalogue()" style="font-size:12px">
+                    <option value="All">All Sources</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Name</label><input id="newHindName" placeholder="Loyal"></div>
+            <div class="form-group" style="max-width:120px"><label>Severity</label>
+                <select id="newHindSeverity"><option>Minor</option><option>Major</option></select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Notes</label><input id="newHindNotes" placeholder="To the Consortium, etc."></div>
+        </div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addHindrance()">Add Hindrance</button></div>
+        <div class="form-actions"><button class="btn" onclick="closeHindrancesModal()">Done</button></div>
+    </div>
+</div>
+
+<!-- EDGES MODAL -->
+<div class="modal-overlay" id="edgesModal">
+    <div class="modal" style="width:530px">
+        <h3>Manage Edges — <span id="edgesNpcName"></span></h3>
+        <div id="edgesList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD EDGE</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1">
+                <label>Pick from Catalogue</label>
+                <select id="catEdgePick" onchange="fillEdgeFromCat()" style="font-size:12px">
+                    <option value="">— Custom / Manual —</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width:140px">
+                <label>Source</label>
+                <select id="catEdgeSource" onchange="loadEdgeCatalogue()" style="font-size:12px">
+                    <option value="All">All Sources</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Name</label><input id="newEdgeName" placeholder="Quick"></div>
+            <div class="form-group"><label>Notes</label><input id="newEdgeNotes" placeholder="Requirements, details"></div>
+        </div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addEdge()">Add Edge</button></div>
+        <div class="form-actions"><button class="btn" onclick="closeEdgesModal()">Done</button></div>
+    </div>
+</div>
+
+<!-- POWERS MODAL -->
+<div class="modal-overlay" id="powersModal">
+    <div class="modal" style="width:580px">
+        <h3>Manage Powers — <span id="powersNpcName"></span></h3>
+        <div id="powersList"></div>
+        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD POWER</h4>
+        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
+            <div class="form-group" style="flex:1">
+                <label>Pick from Catalogue</label>
+                <select id="catPowerPick" onchange="fillPowerFromCat()" style="font-size:12px">
+                    <option value="">— Custom / Manual —</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width:140px">
+                <label>Source</label>
+                <select id="catPowerSource" onchange="loadPowerCatalogue()" style="font-size:12px">
+                    <option value="All">All Sources</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Name</label><input id="newPowerName" placeholder="Bolt"></div>
+            <div class="form-group" style="max-width:80px"><label>PP</label><input id="newPowerPP" type="number" value="0"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Range</label><input id="newPowerRange" placeholder="Smarts×2"></div>
+            <div class="form-group"><label>Duration</label><input id="newPowerDuration" placeholder="Instant"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Trapping</label><input id="newPowerTrapping" placeholder="Fire, Shadow, Divine Light"></div>
+            <div class="form-group"><label>Notes</label><input id="newPowerNotes" placeholder=""></div>
+        </div>
+        <div style="margin-top:8px"><button class="btn primary" onclick="addPower()">Add Power</button></div>
+        <div class="form-actions"><button class="btn" onclick="closePowersModal()">Done</button></div>
+    </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay" id="settingsModal">
     <div class="modal" style="width:550px;max-height:80vh">
@@ -999,6 +1139,9 @@ let currentSkillsNpcId = null;
 let currentWeaponsNpcId = null;
 let currentArmorNpcId = null;
 let currentGearNpcId = null;
+let currentHindrancesNpcId = null;
+let currentEdgesNpcId = null;
+let currentPowersNpcId = null;
 
 // ============================================================
 // API CALLS
@@ -1122,9 +1265,19 @@ function renderNPCDetail(n) {
         const toughTip = toughOk ? `2 + Vigor ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''} = ${expectedToughness} ✓` : `Expected ${expectedToughness} (2 + ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''})`;
 
         const skills = (n.skills||[]).map(s => `${s.name} ${dieStr(s.die)}`).join(', ');
-        const hindrances = (n.hindrances||[]).length ? `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrances.join(', ')}</div></div>` : '';
-        const edges = (n.edges||[]).length ? `<div class="stat-section"><span class="stat-section-label">Edges</span><div class="stat-val">${n.edges.join(', ')}</div></div>` : '';
-        const powers = n.power_points > 0 ? `<div class="stat-section"><span class="stat-section-label">Powers (${n.power_points} PP)${n.arcane_bg ? ' — '+n.arcane_bg : ''}</span><div class="stat-val">${(n.powers||[]).join(', ')}</div></div>` : '';
+        const hindrances = (n.hindrance_items||[]).length ?
+            `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrance_items.map(h => h.severity === 'Major' ? `<strong>${h.name}</strong> (Major${h.notes ? ', '+h.notes : ''})` : `${h.name}${h.notes ? ' ('+h.notes+')' : ''}`).join(', ')}</div></div>` :
+            ((n.hindrances||[]).length ? `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrances.join(', ')} <span style="font-size:10px;color:var(--text-dim)">(legacy)</span></div></div>` : '');
+        const edges = (n.edge_items||[]).length ?
+            `<div class="stat-section"><span class="stat-section-label">Edges</span><div class="stat-val">${n.edge_items.map(e => e.notes ? `${e.name} (${e.notes})` : e.name).join(', ')}</div></div>` :
+            ((n.edges||[]).length ? `<div class="stat-section"><span class="stat-section-label">Edges</span><div class="stat-val">${n.edges.join(', ')} <span style="font-size:10px;color:var(--text-dim)">(legacy)</span></div></div>` : '');
+        const powers = (n.power_items||[]).length ?
+            `<div class="stat-section"><span class="stat-section-label">Powers (${n.power_points} PP)${n.arcane_bg ? ' — '+n.arcane_bg : ''}</span><div class="stat-val">${n.power_items.map(p => {
+                let txt = p.name;
+                if (p.trapping) txt += ` [${p.trapping}]`;
+                return txt;
+            }).join(', ')}</div></div>` :
+            (n.power_points > 0 ? `<div class="stat-section"><span class="stat-section-label">Powers (${n.power_points} PP)${n.arcane_bg ? ' — '+n.arcane_bg : ''}</span><div class="stat-val">${(n.powers||[]).join(', ')} <span style="font-size:10px;color:var(--text-dim)">(legacy)</span></div></div>` : '');
         const specials = (n.special_abilities||[]).length ? `<div class="stat-section"><span class="stat-section-label">Special Abilities</span><div class="stat-val">${n.special_abilities.join(', ')}</div></div>` : '';
         const bennies = n.tier === 'Wild Card' ? `<div class="derived-item"><div class="derived-num">${n.bennies}</div><div class="derived-label">Bennies</div></div>` : '';
 
@@ -1206,6 +1359,46 @@ function renderNPCDetail(n) {
         tacticsHtml = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px 16px;margin-top:10px;font-size:12px"><span style="color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:11px">Tactics</span><div style="margin-top:4px;color:var(--text)">${n.tactics}</div></div>`;
     }
 
+    // Hindrances panel
+    let hindrancesPanel = '';
+    if (n.hindrance_items && n.hindrance_items.length) {
+        const rows = n.hindrance_items.map(h => {
+            const sev = h.severity === 'Major' ? '<span style="color:var(--red);font-weight:600">Major</span>' : '<span style="color:var(--text-dim)">Minor</span>';
+            const notes = h.notes ? ` — ${h.notes}` : '';
+            return `<div class="weapon-entry"><span class="wep-name">${h.name}</span> (${sev}${notes}) <button class="btn sm danger" onclick="deleteHindrance(${h.id})" style="float:right">×</button></div>`;
+        }).join('');
+        hindrancesPanel = `<div class="weapons-panel"><h3>Hindrances <button class="btn sm" onclick="openHindrancesModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
+    } else {
+        hindrancesPanel = `<div class="weapons-panel"><h3>Hindrances <button class="btn sm" onclick="openHindrancesModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No hindrances defined</div></div>`;
+    }
+
+    // Edges panel
+    let edgesPanel = '';
+    if (n.edge_items && n.edge_items.length) {
+        const rows = n.edge_items.map(e => {
+            const notes = e.notes ? ` — ${e.notes}` : '';
+            return `<div class="weapon-entry"><span class="wep-name">${e.name}</span>${notes} <button class="btn sm danger" onclick="deleteEdge(${e.id})" style="float:right">×</button></div>`;
+        }).join('');
+        edgesPanel = `<div class="weapons-panel"><h3>Edges <button class="btn sm" onclick="openEdgesModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
+    } else {
+        edgesPanel = `<div class="weapons-panel"><h3>Edges <button class="btn sm" onclick="openEdgesModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No edges defined</div></div>`;
+    }
+
+    // Powers panel
+    let powersPanel = '';
+    if (n.power_items && n.power_items.length) {
+        const rows = n.power_items.map(p => {
+            const trap = p.trapping ? ` [${p.trapping}]` : '';
+            const pp = p.power_points ? ` ${p.power_points} PP` : '';
+            const dur = p.duration ? `, ${p.duration}` : '';
+            const rng = p.range ? `, ${p.range}` : '';
+            return `<div class="weapon-entry"><span class="wep-name">${p.name}</span>${trap} (${pp}${rng}${dur}) <button class="btn sm danger" onclick="deletePower(${p.id})" style="float:right">×</button></div>`;
+        }).join('');
+        powersPanel = `<div class="weapons-panel"><h3>Powers <button class="btn sm" onclick="openPowersModal(${n.id},'${safeName}')">+ Add</button></h3>${rows}</div>`;
+    } else {
+        powersPanel = `<div class="weapons-panel"><h3>Powers <button class="btn sm" onclick="openPowersModal(${n.id},'${safeName}')">+ Add</button></h3><div style="color:var(--text-dim);font-size:12px">No powers defined</div></div>`;
+    }
+
     // Action buttons + production status (bottom of left column)
     const statusHtml = `
         <div class="actions-bar">
@@ -1274,6 +1467,9 @@ function renderNPCDetail(n) {
                 ${weaponsPanel}
                 ${armorPanel}
                 ${gearPanel}
+                ${hindrancesPanel}
+                ${edgesPanel}
+                ${powersPanel}
                 ${tacticsHtml}
                 ${statusHtml}
                 <div id="exportOutput"></div>
@@ -1582,6 +1778,12 @@ async function deleteLegacyGear(npcId, index) {
 let catWeaponsCache = [];
 let catArmorCache = [];
 let catGearCache = [];
+let catHindrancesCache = [];
+let catEdgesCache = [];
+let catPowersCache = [];
+let hindSourcesLoaded = false;
+let edgeSourcesLoaded = false;
+let powerSourcesLoaded = false;
 let catSourcesLoaded = false;
 
 async function loadCatalogueSources() {
@@ -1699,6 +1901,249 @@ function fillGearFromCat() {
     document.getElementById('newGearWeight').value = g.weight || 0;
     document.getElementById('newGearCost').value = g.cost || '';
     document.getElementById('newGearNotes').value = g.notes || '';
+}
+
+// ============================================================
+// HINDRANCES
+// ============================================================
+function openHindrancesModal(npcId, name) {
+    currentHindrancesNpcId = npcId;
+    document.getElementById('hindrancesNpcName').textContent = name;
+    document.getElementById('hindrancesModal').classList.add('active');
+    loadHindrances();
+    loadHindranceSources().then(() => loadHindranceCatalogue());
+}
+function closeHindrancesModal() {
+    document.getElementById('hindrancesModal').classList.remove('active');
+    if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadHindrances() {
+    const items = await api(`/api/npcs/${currentHindrancesNpcId}/hindrances`);
+    const el = document.getElementById('hindrancesList');
+    if (!items.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No hindrances yet</div>'; return; }
+    el.innerHTML = `<table class="data-table"><tr><th>Name</th><th>Severity</th><th>Notes</th><th></th></tr>${items.map(h => `
+        <tr><td>${h.name}</td><td style="color:${h.severity==='Major'?'var(--red)':'var(--text-dim)'}">${h.severity}</td><td>${h.notes||'—'}</td><td><button class="btn sm danger" onclick="deleteHindrance(${h.id})">×</button></td></tr>`).join('')}</table>`;
+}
+async function addHindrance() {
+    const data = {
+        name: document.getElementById('newHindName').value.trim(),
+        severity: document.getElementById('newHindSeverity').value,
+        notes: document.getElementById('newHindNotes').value.trim() || null,
+    };
+    if (!data.name) { alert('Hindrance name required'); return; }
+    await api(`/api/npcs/${currentHindrancesNpcId}/hindrances`, 'POST', data);
+    ['newHindName','newHindNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('newHindSeverity').value = 'Minor';
+    document.getElementById('catHindrancePick').value = '';
+    loadHindrances();
+}
+async function deleteHindrance(hindId) {
+    const npcId = currentHindrancesNpcId || currentNPC.id;
+    await api(`/api/npcs/${npcId}/hindrances/${hindId}`, 'DELETE');
+    if (document.getElementById('hindrancesModal').classList.contains('active')) loadHindrances();
+    else if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadHindranceSources() {
+    if (hindSourcesLoaded) return;
+    const sources = await api('/api/catalogue/hindrances/sources');
+    const sel = document.getElementById('catHindranceSource');
+    sources.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        sel.appendChild(opt);
+    });
+    hindSourcesLoaded = true;
+}
+async function loadHindranceCatalogue() {
+    const source = document.getElementById('catHindranceSource').value;
+    catHindrancesCache = await api(`/api/catalogue/hindrances?source=${encodeURIComponent(source)}`);
+    const sel = document.getElementById('catHindrancePick');
+    sel.innerHTML = '<option value="">— Custom / Manual —</option>';
+    let lastSource = '';
+    catHindrancesCache.forEach((h, i) => {
+        if (h.source !== lastSource) {
+            const grp = document.createElement('optgroup');
+            grp.label = h.source;
+            sel.appendChild(grp);
+            lastSource = h.source;
+        }
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${h.name} (${h.severity})`;
+        const grps = sel.querySelectorAll('optgroup');
+        grps[grps.length-1].appendChild(opt);
+    });
+}
+function fillHindranceFromCat() {
+    const idx = document.getElementById('catHindrancePick').value;
+    if (idx === '') return;
+    const h = catHindrancesCache[parseInt(idx)];
+    document.getElementById('newHindName').value = h.name;
+    document.getElementById('newHindSeverity').value = h.severity;
+    document.getElementById('newHindNotes').value = '';
+}
+
+// ============================================================
+// EDGES
+// ============================================================
+function openEdgesModal(npcId, name) {
+    currentEdgesNpcId = npcId;
+    document.getElementById('edgesNpcName').textContent = name;
+    document.getElementById('edgesModal').classList.add('active');
+    loadEdges();
+    loadEdgeSources().then(() => loadEdgeCatalogue());
+}
+function closeEdgesModal() {
+    document.getElementById('edgesModal').classList.remove('active');
+    if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadEdges() {
+    const items = await api(`/api/npcs/${currentEdgesNpcId}/edges`);
+    const el = document.getElementById('edgesList');
+    if (!items.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No edges yet</div>'; return; }
+    el.innerHTML = `<table class="data-table"><tr><th>Name</th><th>Notes</th><th></th></tr>${items.map(e => `
+        <tr><td>${e.name}</td><td>${e.notes||'—'}</td><td><button class="btn sm danger" onclick="deleteEdge(${e.id})">×</button></td></tr>`).join('')}</table>`;
+}
+async function addEdge() {
+    const data = {
+        name: document.getElementById('newEdgeName').value.trim(),
+        notes: document.getElementById('newEdgeNotes').value.trim() || null,
+    };
+    if (!data.name) { alert('Edge name required'); return; }
+    await api(`/api/npcs/${currentEdgesNpcId}/edges`, 'POST', data);
+    ['newEdgeName','newEdgeNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('catEdgePick').value = '';
+    loadEdges();
+}
+async function deleteEdge(edgeId) {
+    const npcId = currentEdgesNpcId || currentNPC.id;
+    await api(`/api/npcs/${npcId}/edges/${edgeId}`, 'DELETE');
+    if (document.getElementById('edgesModal').classList.contains('active')) loadEdges();
+    else if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadEdgeSources() {
+    if (edgeSourcesLoaded) return;
+    const sources = await api('/api/catalogue/edges/sources');
+    const sel = document.getElementById('catEdgeSource');
+    sources.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        sel.appendChild(opt);
+    });
+    edgeSourcesLoaded = true;
+}
+async function loadEdgeCatalogue() {
+    const source = document.getElementById('catEdgeSource').value;
+    catEdgesCache = await api(`/api/catalogue/edges?source=${encodeURIComponent(source)}`);
+    const sel = document.getElementById('catEdgePick');
+    sel.innerHTML = '<option value="">— Custom / Manual —</option>';
+    let lastSource = '';
+    catEdgesCache.forEach((e, i) => {
+        if (e.source !== lastSource) {
+            const grp = document.createElement('optgroup');
+            grp.label = e.source;
+            sel.appendChild(grp);
+            lastSource = e.source;
+        }
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${e.name} (${e.rank}, ${e.type})`;
+        const grps = sel.querySelectorAll('optgroup');
+        grps[grps.length-1].appendChild(opt);
+    });
+}
+function fillEdgeFromCat() {
+    const idx = document.getElementById('catEdgePick').value;
+    if (idx === '') return;
+    const e = catEdgesCache[parseInt(idx)];
+    document.getElementById('newEdgeName').value = e.name;
+    document.getElementById('newEdgeNotes').value = e.requirements || '';
+}
+
+// ============================================================
+// POWERS
+// ============================================================
+function openPowersModal(npcId, name) {
+    currentPowersNpcId = npcId;
+    document.getElementById('powersNpcName').textContent = name;
+    document.getElementById('powersModal').classList.add('active');
+    loadPowers();
+    loadPowerSources().then(() => loadPowerCatalogue());
+}
+function closePowersModal() {
+    document.getElementById('powersModal').classList.remove('active');
+    if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadPowers() {
+    const items = await api(`/api/npcs/${currentPowersNpcId}/powers`);
+    const el = document.getElementById('powersList');
+    if (!items.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No powers yet</div>'; return; }
+    el.innerHTML = `<table class="data-table"><tr><th>Name</th><th>PP</th><th>Range</th><th>Duration</th><th>Trapping</th><th></th></tr>${items.map(p => `
+        <tr><td>${p.name}</td><td>${p.power_points||'—'}</td><td>${p.range||'—'}</td><td>${p.duration||'—'}</td><td>${p.trapping||'—'}</td><td><button class="btn sm danger" onclick="deletePower(${p.id})">×</button></td></tr>`).join('')}</table>`;
+}
+async function addPower() {
+    const data = {
+        name: document.getElementById('newPowerName').value.trim(),
+        power_points: parseInt(document.getElementById('newPowerPP').value) || 0,
+        range: document.getElementById('newPowerRange').value.trim() || null,
+        duration: document.getElementById('newPowerDuration').value.trim() || null,
+        trapping: document.getElementById('newPowerTrapping').value.trim() || null,
+        notes: document.getElementById('newPowerNotes').value.trim() || null,
+    };
+    if (!data.name) { alert('Power name required'); return; }
+    await api(`/api/npcs/${currentPowersNpcId}/powers`, 'POST', data);
+    ['newPowerName','newPowerRange','newPowerDuration','newPowerTrapping','newPowerNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('newPowerPP').value = 0;
+    document.getElementById('catPowerPick').value = '';
+    loadPowers();
+}
+async function deletePower(powerId) {
+    const npcId = currentPowersNpcId || currentNPC.id;
+    await api(`/api/npcs/${npcId}/powers/${powerId}`, 'DELETE');
+    if (document.getElementById('powersModal').classList.contains('active')) loadPowers();
+    else if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadPowerSources() {
+    if (powerSourcesLoaded) return;
+    const sources = await api('/api/catalogue/powers/sources');
+    const sel = document.getElementById('catPowerSource');
+    sources.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        sel.appendChild(opt);
+    });
+    powerSourcesLoaded = true;
+}
+async function loadPowerCatalogue() {
+    const source = document.getElementById('catPowerSource').value;
+    catPowersCache = await api(`/api/catalogue/powers?source=${encodeURIComponent(source)}`);
+    const sel = document.getElementById('catPowerPick');
+    sel.innerHTML = '<option value="">— Custom / Manual —</option>';
+    let lastSource = '';
+    catPowersCache.forEach((p, i) => {
+        if (p.source !== lastSource) {
+            const grp = document.createElement('optgroup');
+            grp.label = p.source;
+            sel.appendChild(grp);
+            lastSource = p.source;
+        }
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${p.name} (${p.pp} PP, ${p.rank})`;
+        const grps = sel.querySelectorAll('optgroup');
+        grps[grps.length-1].appendChild(opt);
+    });
+}
+function fillPowerFromCat() {
+    const idx = document.getElementById('catPowerPick').value;
+    if (idx === '') return;
+    const p = catPowersCache[parseInt(idx)];
+    document.getElementById('newPowerName').value = p.name;
+    document.getElementById('newPowerPP').value = parseInt(p.pp) || 0;
+    document.getElementById('newPowerRange').value = p.range || '';
+    document.getElementById('newPowerDuration').value = p.duration || '';
+    document.getElementById('newPowerTrapping').value = '';
+    document.getElementById('newPowerNotes').value = p.summary || '';
 }
 
 // ============================================================
@@ -2000,6 +2445,12 @@ def api_get_npc(npc_id):
         "SELECT * FROM npc_armor WHERE npc_id=?", (npc_id,)).fetchall())
     npc['gear_items'] = rows_to_list(conn.execute(
         "SELECT * FROM npc_gear WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall())
+    npc['hindrance_items'] = rows_to_list(conn.execute(
+        "SELECT * FROM npc_hindrances WHERE npc_id=? ORDER BY severity DESC, name", (npc_id,)).fetchall())
+    npc['edge_items'] = rows_to_list(conn.execute(
+        "SELECT * FROM npc_edges WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall())
+    npc['power_items'] = rows_to_list(conn.execute(
+        "SELECT * FROM npc_powers WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall())
     npc['organisations_detail'] = rows_to_list(conn.execute("""
         SELECT o.name, no2.role FROM npc_organisations no2
         JOIN organisations o ON o.id = no2.org_id WHERE no2.npc_id = ?
@@ -2226,6 +2677,26 @@ def api_statblock(npc_id):
     for label, field in [('Hindrances','hindrances_json'),('Edges','edges_json')]:
         items = json.loads(npc[field]) if npc[field] else []
         if items: lines.append(f"**{label}:** {', '.join(items)}")
+    # Prefer managed hindrances over legacy JSON
+    managed_hindrances = conn.execute("SELECT name, severity, notes FROM npc_hindrances WHERE npc_id=? ORDER BY severity DESC, name", (npc_id,)).fetchall()
+    if managed_hindrances:
+        hind_parts = []
+        for h in managed_hindrances:
+            part = h['name']
+            if h['severity'] == 'Major':
+                part += ' (Major)'
+            if h['notes']:
+                part += ' — {}'.format(h['notes'])
+            hind_parts.append(part)
+        # Override legacy line
+        lines = [l for l in lines if not l.startswith('**Hindrances:**')]
+        lines.append(f"**Hindrances:** {', '.join(hind_parts)}")
+    # Prefer managed edges over legacy JSON
+    managed_edges = conn.execute("SELECT name, notes FROM npc_edges WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall()
+    if managed_edges:
+        edge_parts = ['{}{}'.format(e['name'], ' ({})'.format(e['notes']) if e['notes'] else '') for e in managed_edges]
+        lines = [l for l in lines if not l.startswith('**Edges:**')]
+        lines.append(f"**Edges:** {', '.join(edge_parts)}")
     # Gear — prefer managed gear items, fall back to legacy JSON
     gear_items = conn.execute("SELECT name, quantity, notes FROM npc_gear WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall()
     if gear_items:
@@ -2252,8 +2723,18 @@ def api_statblock(npc_id):
             armor_parts.append(part)
         lines.append(f"**Armour:** {', '.join(armor_parts)}")
     if npc['power_points'] and npc['power_points'] > 0:
-        powers = json.loads(npc['powers_json']) if npc['powers_json'] else []
-        lines.append(f"**Powers ({npc['power_points']} PP):** {', '.join(powers)}")
+        managed_powers = conn.execute("SELECT name, power_points, range, duration, trapping FROM npc_powers WHERE npc_id=? ORDER BY name", (npc_id,)).fetchall()
+        if managed_powers:
+            power_parts = []
+            for p in managed_powers:
+                part = p['name']
+                if p['trapping']:
+                    part += ' [{}]'.format(p['trapping'])
+                power_parts.append(part)
+            lines.append(f"**Powers ({npc['power_points']} PP):** {', '.join(power_parts)}")
+        else:
+            powers = json.loads(npc['powers_json']) if npc['powers_json'] else []
+            lines.append(f"**Powers ({npc['power_points']} PP):** {', '.join(powers)}")
     if npc['tactics']:
         lines.append(f"**Tactics:** {npc['tactics']}")
     conn.close()
@@ -2318,6 +2799,139 @@ def api_catalogue_gear():
 @app.route('/api/catalogue/sources', methods=['GET'])
 def api_catalogue_sources():
     return jsonify(CAT_SOURCES)
+
+# ============================================================
+# HINDRANCES CATALOGUE & MANAGEMENT
+# ============================================================
+
+@app.route('/api/catalogue/hindrances', methods=['GET'])
+def api_catalogue_hindrances():
+    source = request.args.get('source', 'All')
+    severity = request.args.get('severity', 'All')
+    results = CAT_HINDRANCES
+    if source != 'All':
+        results = [h for h in results if h['source'] == source]
+    if severity != 'All':
+        results = [h for h in results if h['severity'] == severity]
+    return jsonify(results)
+
+@app.route('/api/catalogue/hindrances/sources', methods=['GET'])
+def api_hindrance_sources():
+    return jsonify(HINDRANCE_SOURCES)
+
+@app.route('/api/npcs/<int:npc_id>/hindrances', methods=['GET'])
+def api_get_npc_hindrances(npc_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM npc_hindrances WHERE npc_id = ?", (npc_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/npcs/<int:npc_id>/hindrances', methods=['POST'])
+def api_add_npc_hindrance(npc_id):
+    data = request.json
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO npc_hindrances (npc_id, name, severity, source, notes)
+        VALUES (?, ?, ?, ?, ?)
+    """, (npc_id, data['name'], data['severity'], data.get('source'), data.get('notes')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/npcs/<int:npc_id>/hindrances/<int:hind_id>', methods=['DELETE'])
+def api_delete_npc_hindrance(npc_id, hind_id):
+    conn = get_db()
+    conn.execute("DELETE FROM npc_hindrances WHERE id = ? AND npc_id = ?", (hind_id, npc_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# ============================================================
+# EDGES CATALOGUE & MANAGEMENT
+# ============================================================
+
+@app.route('/api/catalogue/edges', methods=['GET'])
+def api_catalogue_edges():
+    source = request.args.get('source', 'All')
+    results = CAT_EDGES
+    if source != 'All':
+        results = [e for e in results if e['source'] == source]
+    return jsonify(results)
+
+@app.route('/api/catalogue/edges/sources', methods=['GET'])
+def api_edge_sources():
+    return jsonify(EDGE_SOURCES)
+
+@app.route('/api/npcs/<int:npc_id>/edges', methods=['GET'])
+def api_get_npc_edges(npc_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM npc_edges WHERE npc_id = ?", (npc_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/npcs/<int:npc_id>/edges', methods=['POST'])
+def api_add_npc_edge(npc_id):
+    data = request.json
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO npc_edges (npc_id, name, source, notes)
+        VALUES (?, ?, ?, ?)
+    """, (npc_id, data['name'], data.get('source'), data.get('notes')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/npcs/<int:npc_id>/edges/<int:edge_id>', methods=['DELETE'])
+def api_delete_npc_edge(npc_id, edge_id):
+    conn = get_db()
+    conn.execute("DELETE FROM npc_edges WHERE id = ? AND npc_id = ?", (edge_id, npc_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+# ============================================================
+# POWERS CATALOGUE & MANAGEMENT
+# ============================================================
+
+@app.route('/api/catalogue/powers', methods=['GET'])
+def api_catalogue_powers():
+    source = request.args.get('source', 'All')
+    results = CAT_POWERS
+    if source != 'All':
+        results = [p for p in results if p['source'] == source]
+    return jsonify(results)
+
+@app.route('/api/catalogue/powers/sources', methods=['GET'])
+def api_power_sources():
+    return jsonify(POWER_SOURCES)
+
+@app.route('/api/npcs/<int:npc_id>/powers', methods=['GET'])
+def api_get_npc_powers(npc_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM npc_powers WHERE npc_id = ?", (npc_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/npcs/<int:npc_id>/powers', methods=['POST'])
+def api_add_npc_power(npc_id):
+    data = request.json
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO npc_powers (npc_id, name, power_points, range, duration, trapping, source, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (npc_id, data['name'], data.get('power_points', 0), data.get('range'),
+          data.get('duration'), data.get('trapping'), data.get('source'), data.get('notes')))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/npcs/<int:npc_id>/powers/<int:power_id>', methods=['DELETE'])
+def api_delete_npc_power(npc_id, power_id):
+    conn = get_db()
+    conn.execute("DELETE FROM npc_powers WHERE id = ? AND npc_id = ?", (power_id, npc_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 @app.route('/api/versions', methods=['GET'])
 def api_versions():
