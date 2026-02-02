@@ -9,6 +9,7 @@ echo.
 echo ========================================
 echo   TRIBUTE LANDS NPC DATABASE
 echo ========================================
+echo   Directory: %CD%
 echo.
 
 REM Step 1: Check Python
@@ -41,11 +42,12 @@ echo [3/4] Rebuilding database...
 if exist tribute_lands_npcs.db (
     del tribute_lands_npcs.db >nul 2>&1
 )
-python seed_data.py >nul 2>&1
+echo       Running seed_data.py...
+python seed_data.py
 if errorlevel 1 (
     color 0C
     echo.
-    echo ERROR: Failed to build database!
+    echo ERROR: See above for details.
     echo.
     pause
     exit /b 1
