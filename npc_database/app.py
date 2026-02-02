@@ -41,6 +41,20 @@ def get_db():
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
+def auto_seed_if_empty():
+    """Automatically run seed_data.py if the database has no NPCs."""
+    conn = get_db()
+    count = conn.execute("SELECT COUNT(*) FROM npcs").fetchone()[0]
+    conn.close()
+    if count == 0:
+        print("  Database empty — auto-seeding...")
+        seed_path = APP_DIR / "seed_data.py"
+        if seed_path.exists():
+            import subprocess
+            subprocess.run([sys.executable, str(seed_path)], cwd=str(APP_DIR))
+        else:
+            print("  Warning: seed_data.py not found, skipping auto-seed")
+
 def init_db_if_needed():
     if not DB_PATH.exists():
         conn = get_db()
@@ -2115,6 +2129,7 @@ def open_browser():
 
 if __name__ == '__main__':
     init_db_if_needed()
+    auto_seed_if_empty()
     print("\n  ╔══════════════════════════════════════════════╗")
     print("  ║  TRIBUTE LANDS NPC DATABASE                  ║")
     print("  ║  DiceForge Studios Ltd                       ║")
