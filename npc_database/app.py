@@ -9,6 +9,12 @@ visual NPC manager in your browser.
 Requires: pip install flask
 """
 
+VERSION = {
+    "version": "1.2.0",
+    "updated": "2025-02-02",
+    "changes": "Settings panel with version tracking; quote escaping fix"
+}
+
 import sqlite3
 import json
 import os
@@ -20,6 +26,16 @@ from flask import Flask, render_template_string, request, jsonify, send_file, re
 
 # Equipment catalogue — weapons, armor, gear from all sources
 from equipment import WEAPONS as CAT_WEAPONS, ARMOR as CAT_ARMOR, GEAR as CAT_GEAR, SOURCES as CAT_SOURCES
+from equipment import VERSION as EQUIPMENT_VERSION
+from hindrances import VERSION as HINDRANCES_VERSION
+from edges import VERSION as EDGES_VERSION
+from powers import VERSION as POWERS_VERSION
+
+# Try to import seed_data VERSION
+try:
+    from seed_data import VERSION as SEED_VERSION
+except ImportError:
+    SEED_VERSION = {"version": "?", "updated": "?", "changes": "Could not load"}
 
 # ============================================================
 # CONFIGURATION
@@ -653,6 +669,7 @@ HTML_TEMPLATE = '''
         <div class="sidebar-footer">
             <button class="btn primary" onclick="openAddModal()" style="flex:1">+ New NPC</button>
             <button class="btn" onclick="showStatusView()">Status</button>
+            <button class="btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
         </div>
     </div>
 
@@ -952,6 +969,19 @@ HTML_TEMPLATE = '''
         </div>
         <div style="margin-top:8px"><button class="btn primary" onclick="addGear()">Add Item</button></div>
         <div class="form-actions"><button class="btn" onclick="closeGearModal()">Done</button></div>
+    </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal" style="width:550px;max-height:80vh">
+        <h3>⚙️ Settings</h3>
+        <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+            <button class="btn sm" id="tabVersions" onclick="showSettingsTab('versions')" style="border-radius:4px 4px 0 0">Versions</button>
+            <button class="btn sm" id="tabAbout" onclick="showSettingsTab('about')" style="border-radius:4px 4px 0 0">About</button>
+        </div>
+        <div id="settingsContent" style="overflow-y:auto;max-height:55vh"></div>
+        <div class="form-actions"><button class="btn" onclick="closeSettingsModal()">Close</button></div>
     </div>
 </div>
 
@@ -1755,6 +1785,100 @@ async function exportRegionFG() {
 }
 
 // ============================================================
+// SETTINGS
+// ============================================================
+let settingsVersions = null;
+
+async function openSettingsModal() {
+    document.getElementById('settingsModal').classList.add('active');
+    showSettingsTab('versions');
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('active');
+}
+
+async function showSettingsTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('#settingsModal .btn.sm').forEach(b => b.style.background = 'var(--bg-dark)');
+    document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.background = 'var(--primary)';
+    
+    const content = document.getElementById('settingsContent');
+    
+    if (tab === 'versions') {
+        // Fetch versions if not cached
+        if (!settingsVersions) {
+            content.innerHTML = '<div style="color:var(--text-dim)">Loading...</div>';
+            settingsVersions = await api('/api/versions');
+        }
+        
+        const v = settingsVersions;
+        content.innerHTML = `
+            <table style="width:100%;font-size:13px;border-collapse:collapse">
+                <tr style="border-bottom:1px solid var(--border)">
+                    <th style="text-align:left;padding:8px 4px;color:var(--text-dim)">Component</th>
+                    <th style="text-align:left;padding:8px 4px;color:var(--text-dim)">Version</th>
+                    <th style="text-align:left;padding:8px 4px;color:var(--text-dim)">Updated</th>
+                    <th style="text-align:left;padding:8px 4px;color:var(--text-dim)">Changes</th>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 4px;font-weight:600">app.py</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.app.version}</td>
+                    <td style="padding:8px 4px">${v.app.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.app.changes}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 4px;font-weight:600">seed_data.py</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.seed_data.version}</td>
+                    <td style="padding:8px 4px">${v.seed_data.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.seed_data.changes}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 4px;font-weight:600">equipment/</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.equipment.version}</td>
+                    <td style="padding:8px 4px">${v.equipment.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.equipment.changes}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 4px;font-weight:600">hindrances/</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.hindrances.version}</td>
+                    <td style="padding:8px 4px">${v.hindrances.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.hindrances.changes}</td>
+                </tr>
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 4px;font-weight:600">edges/</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.edges.version}</td>
+                    <td style="padding:8px 4px">${v.edges.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.edges.changes}</td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 4px;font-weight:600">powers/</td>
+                    <td style="padding:8px 4px;color:var(--primary)">${v.powers.version}</td>
+                    <td style="padding:8px 4px">${v.powers.updated}</td>
+                    <td style="padding:8px 4px;font-size:11px;color:var(--text-dim)">${v.powers.changes}</td>
+                </tr>
+            </table>
+            <div style="margin-top:16px;padding:8px;background:var(--bg-dark);border-radius:4px;font-size:11px;color:var(--text-dim)">
+                Pull latest from GitHub Desktop and restart to update.
+            </div>
+        `;
+    } else if (tab === 'about') {
+        content.innerHTML = `
+            <div style="text-align:center;padding:20px">
+                <div style="font-size:24px;font-weight:700;color:var(--primary);margin-bottom:8px">TRIBUTE LANDS</div>
+                <div style="font-size:14px;margin-bottom:16px">NPC Database</div>
+                <div style="font-size:12px;color:var(--text-dim);margin-bottom:20px">DiceForge Studios Ltd</div>
+                <div style="font-size:11px;color:var(--text-dim);line-height:1.6">
+                    A production database for managing NPCs across<br>
+                    The Tribute Lands: Paradise Lost setting.<br><br>
+                    Built for Savage Worlds Adventure Edition.
+                </div>
+            </div>
+        `;
+    }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 loadNPCs();
@@ -2119,6 +2243,18 @@ def api_catalogue_gear():
 @app.route('/api/catalogue/sources', methods=['GET'])
 def api_catalogue_sources():
     return jsonify(CAT_SOURCES)
+
+@app.route('/api/versions', methods=['GET'])
+def api_versions():
+    """Return version info for all system components."""
+    return jsonify({
+        "app": VERSION,
+        "seed_data": SEED_VERSION,
+        "equipment": EQUIPMENT_VERSION,
+        "hindrances": HINDRANCES_VERSION,
+        "edges": EDGES_VERSION,
+        "powers": POWERS_VERSION
+    })
 
 # ============================================================
 # LAUNCH
