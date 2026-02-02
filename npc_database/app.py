@@ -1103,7 +1103,7 @@ function renderNPCDetail(n) {
                 </div>
                 <div class="stat-section">
                     <span class="stat-section-label">Skills</span>
-                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${n.name.replace(/'/g,"\\\\'")}')">Edit</button></div>
+                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;")}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
                     <div class="derived-item" title="${paceTip}"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div></div>
@@ -1119,7 +1119,7 @@ function renderNPCDetail(n) {
 
     // Weapons panel
     let weaponsPanel = '';
-    const safeName = n.name.replace(/'/g,"\\\\'");
+    const safeName = n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;");
     if (n.weapons && n.weapons.length) {
         const rows = n.weapons.map(w => {
             const ap = w.armor_piercing ? `, AP ${w.armor_piercing}` : '';
