@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "updated": "2025-02-02",
-    "changes": "4-column layout: sidebar, stat block, dynamic workspace panel, narrative + portrait. Modals replaced with inline editing."
+    "changes": "Fix: catalogue source dropdown repopulation bug (wrong variable name in flag reset)"
 }
 
 import sqlite3
@@ -1470,7 +1470,7 @@ let activeWorkspace = null;
 function openWorkspace(type, npcId, name) {
     activeWorkspace = type;
     // Reset source-loaded flags since workspace creates fresh elements
-    sourcesLoaded = false;
+    catSourcesLoaded = false;
     hindSourcesLoaded = false;
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
