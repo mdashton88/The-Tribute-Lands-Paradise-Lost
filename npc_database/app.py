@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "2.0.1",
+    "version": "2.0.2",
     "updated": "2025-02-02",
-    "changes": "Fix: catalogue source dropdown repopulation bug (wrong variable name in flag reset)"
+    "changes": "Fix: BASE_DIR crash — portraits directory uses APP_DIR"
 }
 
 import sqlite3
@@ -164,7 +164,7 @@ def init_db_if_needed():
     conn.close()
 
     # Ensure portraits directory exists
-    portraits_dir = BASE_DIR / 'portraits'
+    portraits_dir = APP_DIR / 'portraits'
     portraits_dir.mkdir(exist_ok=True)
 
 def die_str(value):
@@ -2980,7 +2980,7 @@ def api_open_github_desktop():
 
 @app.route('/portraits/<path:filename>')
 def serve_portrait(filename):
-    return send_from_directory(BASE_DIR / 'portraits', filename)
+    return send_from_directory(APP_DIR / 'portraits', filename)
 
 @app.route('/api/npcs/<int:npc_id>/portrait', methods=['POST'])
 def api_upload_portrait(npc_id):
@@ -2993,7 +2993,7 @@ def api_upload_portrait(npc_id):
     if ext not in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
         return jsonify({"error": "Unsupported image format"}), 400
     safe_name = f"npc_{npc_id}{ext}"
-    portraits_dir = BASE_DIR / 'portraits'
+    portraits_dir = APP_DIR / 'portraits'
     portraits_dir.mkdir(exist_ok=True)
     # Remove old portrait if different extension
     for old in portraits_dir.glob(f"npc_{npc_id}.*"):
@@ -3010,7 +3010,7 @@ def api_delete_portrait(npc_id):
     conn = get_db()
     row = conn.execute("SELECT portrait_path FROM npcs WHERE id = ?", (npc_id,)).fetchone()
     if row and row['portrait_path']:
-        p = BASE_DIR / 'portraits' / row['portrait_path']
+        p = APP_DIR / 'portraits' / row['portrait_path']
         if p.exists():
             p.unlink()
     conn.execute("UPDATE npcs SET portrait_path = NULL WHERE id = ?", (npc_id,))
