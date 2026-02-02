@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "2.0.2",
+    "version": "2.1.0",
     "updated": "2025-02-02",
-    "changes": "Fix: BASE_DIR crash — portraits directory uses APP_DIR"
+    "changes": "Resizable columns with drag handles + px width gauges"
 }
 
 import sqlite3
@@ -466,31 +466,71 @@ HTML_TEMPLATE = '''
         /* --- THREE-COLUMN DETAIL LAYOUT --- */
         .detail-columns {
             display: flex;
-            gap: 16px;
+            gap: 0;
             margin-top: 14px;
             height: calc(100vh - 180px);
         }
         .col-stats {
             width: 380px;
-            min-width: 380px;
+            min-width: 200px;
             flex-shrink: 0;
             overflow-y: auto;
+            position: relative;
         }
         .col-workspace {
             flex: 1;
-            min-width: 280px;
+            min-width: 200px;
             overflow-y: auto;
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 4px;
             padding: 14px 16px;
+            position: relative;
         }
         .col-narrative {
             width: 320px;
-            min-width: 280px;
+            min-width: 200px;
             flex-shrink: 0;
             overflow-y: auto;
+            position: relative;
         }
+        /* --- RESIZE HANDLES --- */
+        .col-resizer {
+            width: 6px;
+            cursor: col-resize;
+            background: transparent;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 10;
+            transition: background 0.15s;
+        }
+        .col-resizer:hover, .col-resizer.dragging {
+            background: var(--accent-dim);
+        }
+        .col-resizer::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 1px;
+            width: 4px;
+            height: 32px;
+            transform: translateY(-50%);
+            border-left: 1px solid var(--border);
+            border-right: 1px solid var(--border);
+        }
+        /* --- WIDTH GAUGE --- */
+        .col-gauge {
+            position: absolute;
+            top: 2px;
+            right: 6px;
+            font-size: 9px;
+            color: var(--text-dim);
+            opacity: 0.6;
+            pointer-events: none;
+            font-family: monospace;
+            z-index: 5;
+        }
+        .col-workspace .col-gauge { right: 22px; }
         .workspace-empty {
             display: flex;
             flex-direction: column;
@@ -1283,8 +1323,9 @@ function renderNPCDetail(n) {
             ${titleLine}
         </div>
         ${quote}
-        <div class="detail-columns">
-            <div class="col-stats">
+        <div class="detail-columns" id="detailColumns">
+            <div class="col-stats" id="colStats">
+                <div class="col-gauge" id="gaugeStats"></div>
                 ${statsPanel}
                 ${weaponsPanel}
                 ${armorPanel}
@@ -1296,17 +1337,22 @@ function renderNPCDetail(n) {
                 ${statusHtml}
                 <div id="exportOutput"></div>
             </div>
+            <div class="col-resizer" id="resizer1"></div>
             <div class="col-workspace" id="workspacePanel">
+                <div class="col-gauge" id="gaugeWorkspace"></div>
                 <div class="workspace-empty">
                     <div>Click any panel heading to edit</div>
                     <div class="ws-hint">Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div>
                 </div>
             </div>
-            <div class="col-narrative">
+            <div class="col-resizer" id="resizer2"></div>
+            <div class="col-narrative" id="colNarrative">
+                <div class="col-gauge" id="gaugeNarrative"></div>
                 ${portraitHtml}
                 ${desc}${bg}${narrative}${orgsHtml}${connsHtml}${appsHtml}${notesHtml}${source}
             </div>
         </div>`;
+    initResizers();
 }
 
 // ============================================================
@@ -1601,6 +1647,77 @@ function renderPowersWS(npcId, name) {
         <div class="form-row"><div class="form-group"><label>Range</label><input id="newPowerRange" placeholder="Smarts x2"></div><div class="form-group"><label>Duration</label><input id="newPowerDuration" placeholder="Instant"></div></div>
         <div class="form-row"><div class="form-group"><label>Trapping</label><input id="newPowerTrapping" placeholder="Fire, Shadow, etc."></div><div class="form-group"><label>Notes</label><input id="newPowerNotes"></div></div>
         <div style="margin-top:8px"><button class="btn primary" onclick="addPower()">Add Power</button></div>`;
+}
+
+// ============================================================
+// COLUMN RESIZER + WIDTH GAUGE
+// ============================================================
+function updateGauges() {
+    const stats = document.getElementById('colStats');
+    const ws = document.getElementById('workspacePanel');
+    const nar = document.getElementById('colNarrative');
+    const g1 = document.getElementById('gaugeStats');
+    const g2 = document.getElementById('gaugeWorkspace');
+    const g3 = document.getElementById('gaugeNarrative');
+    if (stats && g1) g1.textContent = Math.round(stats.offsetWidth) + 'px';
+    if (ws && g2) g2.textContent = Math.round(ws.offsetWidth) + 'px';
+    if (nar && g3) g3.textContent = Math.round(nar.offsetWidth) + 'px';
+}
+
+function initResizers() {
+    updateGauges();
+    const container = document.getElementById('detailColumns');
+    if (!container) return;
+
+    setupResizer('resizer1', 'colStats', 'workspacePanel', 'left');
+    setupResizer('resizer2', 'workspacePanel', 'colNarrative', 'right');
+}
+
+function setupResizer(resizerId, leftId, rightId, mode) {
+    const resizer = document.getElementById(resizerId);
+    const leftCol = document.getElementById(leftId);
+    const rightCol = document.getElementById(rightId);
+    if (!resizer || !leftCol || !rightCol) return;
+
+    let startX, startLeftW, startRightW;
+
+    resizer.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        startX = e.clientX;
+        startLeftW = leftCol.offsetWidth;
+        startRightW = rightCol.offsetWidth;
+        resizer.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        function onMove(e) {
+            const dx = e.clientX - startX;
+            const newLeft = Math.max(200, startLeftW + dx);
+            const newRight = Math.max(200, startRightW - dx);
+            // Only apply if both above minimums
+            if (newLeft >= 200 && newRight >= 200) {
+                leftCol.style.width = newLeft + 'px';
+                leftCol.style.minWidth = newLeft + 'px';
+                leftCol.style.flex = 'none';
+                if (rightId !== 'workspacePanel') {
+                    rightCol.style.width = newRight + 'px';
+                    rightCol.style.minWidth = newRight + 'px';
+                    rightCol.style.flex = 'none';
+                }
+            }
+            updateGauges();
+        }
+        function onUp() {
+            resizer.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            updateGauges();
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    });
 }
 
 // ============================================================
