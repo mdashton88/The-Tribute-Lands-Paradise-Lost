@@ -1055,6 +1055,7 @@ HTML_TEMPLATE = '''
         <h3>⚙️ Settings</h3>
         <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border)">
             <button class="btn sm" id="tabVersions" onclick="showSettingsTab('versions')" style="border-radius:4px 4px 0 0">Versions</button>
+            <button class="btn sm" id="tabMigration" onclick="showSettingsTab('migration')" style="border-radius:4px 4px 0 0">Migration</button>
             <button class="btn sm" id="tabAbout" onclick="showSettingsTab('about')" style="border-radius:4px 4px 0 0">About</button>
         </div>
         <div id="settingsContent" style="overflow-y:auto;max-height:55vh"></div>
@@ -2434,6 +2435,56 @@ async function showSettingsTab(tab) {
                 <div id="updateStatus" style="margin-top:8px;display:none"></div>
             </div>
         `;
+    } else if (tab === 'migration') {
+        content.innerHTML = '<div style="color:var(--text-dim)">Scanning legacy data...</div>';
+        const preview = await api('/api/migration/preview');
+        if (!preview.npcs || !preview.npcs.length) {
+            content.innerHTML = `<div style="text-align:center;padding:20px">
+                <div style="color:var(--success);font-size:14px;font-weight:600;margin-bottom:8px">✓ All Clean</div>
+                <div style="font-size:12px;color:var(--text-dim)">No legacy JSON data found. All hindrances, edges and powers are managed through catalogues.</div>
+            </div>`;
+        } else {
+            let rows = '';
+            for (const npc of preview.npcs) {
+                const items = [];
+                for (const h of (npc.hindrances||[])) {
+                    const icon = h.matched ? '✓' : '⚠';
+                    const cls = h.matched ? 'color:var(--success)' : 'color:var(--warning, #e6a817)';
+                    items.push(`<div style="font-size:11px;margin:2px 0"><span style="${cls}">${icon}</span> <strong>H:</strong> ${h.original} → ${h.name} (${h.severity})${h.notes ? ' ['+h.notes+']' : ''}${!h.matched ? ' <em style="color:var(--warning, #e6a817)">not in catalogue</em>' : ''}</div>`);
+                }
+                for (const e of (npc.edges||[])) {
+                    const icon = e.matched ? '✓' : '⚠';
+                    const cls = e.matched ? 'color:var(--success)' : 'color:var(--warning, #e6a817)';
+                    items.push(`<div style="font-size:11px;margin:2px 0"><span style="${cls}">${icon}</span> <strong>E:</strong> ${e.original} → ${e.name}${e.notes ? ' ['+e.notes+']' : ''}${!e.matched ? ' <em style="color:var(--warning, #e6a817)">not in catalogue</em>' : ''}</div>`);
+                }
+                for (const p of (npc.powers||[])) {
+                    const icon = p.matched ? '✓' : '⚠';
+                    const cls = p.matched ? 'color:var(--success)' : 'color:var(--warning, #e6a817)';
+                    items.push(`<div style="font-size:11px;margin:2px 0"><span style="${cls}">${icon}</span> <strong>P:</strong> ${p.original} → ${p.name}${!p.matched ? ' <em style="color:var(--warning, #e6a817)">not in catalogue</em>' : ''}</div>`);
+                }
+                rows += `<div style="margin-bottom:12px;padding:10px;background:var(--bg-dark);border-radius:4px">
+                    <div style="font-weight:600;margin-bottom:4px">${npc.name} <span style="font-size:11px;color:var(--text-dim)">(ID ${npc.id})</span></div>
+                    ${items.join('')}
+                </div>`;
+            }
+            content.innerHTML = `
+                <div style="margin-bottom:12px">
+                    <div style="font-size:13px;font-weight:600;margin-bottom:4px">Legacy Data Migration</div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+                        Found ${preview.total_items} legacy items across ${preview.npcs.length} NPCs.
+                        <span style="color:var(--success)">✓</span> = catalogue match,
+                        <span style="color:var(--warning, #e6a817)">⚠</span> = will be added as custom entry.
+                        Legacy JSON fields will be cleared after migration.
+                    </div>
+                </div>
+                <div style="max-height:35vh;overflow-y:auto;margin-bottom:12px">${rows}</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn primary" id="migrateBtn" onclick="executeMigration()" style="font-size:12px">
+                        🔄 Migrate All Legacy Data
+                    </button>
+                    <div id="migrateStatus" style="font-size:11px"></div>
+                </div>`;
+        }
     } else if (tab === 'about') {
         content.innerHTML = `
             <div style="text-align:center;padding:20px">
@@ -2452,6 +2503,32 @@ async function showSettingsTab(tab) {
 
 function openGitHub() {
     window.open('https://github.com/mdashton88/The-Tribute-Lands-Paradise-Lost', '_blank');
+}
+
+async function executeMigration() {
+    const btn = document.getElementById('migrateBtn');
+    const status = document.getElementById('migrateStatus');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Migrating...';
+    status.innerHTML = '';
+    try {
+        const result = await api('/api/migration/execute', 'POST');
+        if (result.success) {
+            status.innerHTML = `<span style="color:var(--success)">✓ Migrated ${result.migrated_items} items across ${result.migrated_npcs} NPCs. Legacy fields cleared.</span>`;
+            btn.innerHTML = '✓ Done';
+            if (result.warnings && result.warnings.length) {
+                status.innerHTML += '<br>' + result.warnings.map(w => `<span style="color:var(--warning, #e6a817);font-size:10px">⚠ ${w}</span>`).join('<br>');
+            }
+        } else {
+            status.innerHTML = `<span style="color:var(--danger)">✗ ${result.error || 'Migration failed'}</span>`;
+            btn.disabled = false;
+            btn.innerHTML = '🔄 Retry Migration';
+        }
+    } catch(e) {
+        status.innerHTML = `<span style="color:var(--danger)">✗ ${e.message}</span>`;
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Retry Migration';
+    }
 }
 
 async function runUpdate() {
@@ -3107,6 +3184,215 @@ def api_open_github_desktop():
             return jsonify({"success": False, "message": "Please open GitHub Desktop manually."})
     except Exception as e:
         return jsonify({"success": False, "message": f"Could not open GitHub Desktop: {str(e)}"})
+
+# ============================================================
+# LEGACY DATA MIGRATION
+# ============================================================
+
+import re as _re
+
+def _parse_hindrance(raw):
+    """Parse 'Loyal (Major — crew)' → {name, severity, notes, original}"""
+    raw = raw.strip()
+    result = {'original': raw, 'name': raw, 'severity': 'Minor', 'notes': ''}
+    # Match pattern like "Name (Major — notes)" or "Name (Minor)"
+    m = _re.match(r'^(.+?)\s*\((Major|Minor)(?:\s*[—–-]\s*(.+?))?\)\s*$', raw)
+    if m:
+        result['name'] = m.group(1).strip()
+        result['severity'] = m.group(2)
+        result['notes'] = (m.group(3) or '').strip()
+    return result
+
+def _parse_edge(raw):
+    """Parse 'Connections (bureaucrats, inspectors)' → {name, notes, original}"""
+    raw = raw.strip()
+    result = {'original': raw, 'name': raw, 'notes': ''}
+    # Check if parenthetical is NOT a severity indicator — it's edge notes
+    m = _re.match(r'^(.+?)\s*\((.+?)\)\s*$', raw)
+    if m:
+        result['name'] = m.group(1).strip()
+        result['notes'] = m.group(2).strip()
+    return result
+
+def _match_hindrance(parsed, catalogue):
+    """Try to match parsed hindrance against catalogue. Returns source if matched."""
+    name_lower = parsed['name'].lower()
+    for item in catalogue:
+        if item['name'].lower() == name_lower:
+            return item.get('source', 'Core')
+    return None
+
+def _match_edge(parsed, catalogue):
+    """Try to match parsed edge against catalogue. Returns source if matched."""
+    name_lower = parsed['name'].lower()
+    for item in catalogue:
+        if item['name'].lower() == name_lower:
+            return item.get('source', 'Core')
+    return None
+
+def _match_power(name, catalogue):
+    """Try to match power name against catalogue."""
+    name_lower = name.lower().strip()
+    for item in catalogue:
+        if item['name'].lower() == name_lower:
+            return item
+    return None
+
+@app.route('/api/migration/preview', methods=['GET'])
+def api_migration_preview():
+    from powers import POWERS as CAT_POWERS
+    conn = get_db()
+    npcs = rows_to_list(conn.execute(
+        "SELECT id, name, hindrances_json, edges_json, powers_json FROM npcs"
+    ).fetchall())
+
+    result_npcs = []
+    total_items = 0
+
+    for npc in npcs:
+        hindrances_raw = json.loads(npc.get('hindrances_json') or '[]')
+        edges_raw = json.loads(npc.get('edges_json') or '[]')
+        powers_raw = json.loads(npc.get('powers_json') or '[]')
+
+        if not hindrances_raw and not edges_raw and not powers_raw:
+            continue
+
+        # Check if already migrated (managed items exist)
+        existing_h = conn.execute("SELECT COUNT(*) FROM npc_hindrances WHERE npc_id=?", (npc['id'],)).fetchone()[0]
+        existing_e = conn.execute("SELECT COUNT(*) FROM npc_edges WHERE npc_id=?", (npc['id'],)).fetchone()[0]
+        existing_p = conn.execute("SELECT COUNT(*) FROM npc_powers WHERE npc_id=?", (npc['id'],)).fetchone()[0]
+
+        npc_result = {'id': npc['id'], 'name': npc['name'], 'hindrances': [], 'edges': [], 'powers': []}
+
+        for h_raw in hindrances_raw:
+            parsed = _parse_hindrance(h_raw)
+            source = _match_hindrance(parsed, CAT_HINDRANCES)
+            parsed['matched'] = source is not None
+            parsed['source'] = source or 'Custom'
+            npc_result['hindrances'].append(parsed)
+            total_items += 1
+
+        for e_raw in edges_raw:
+            parsed = _parse_edge(e_raw)
+            source = _match_edge(parsed, CAT_EDGES)
+            parsed['matched'] = source is not None
+            parsed['source'] = source or 'Custom'
+            npc_result['edges'].append(parsed)
+            total_items += 1
+
+        for p_raw in powers_raw:
+            p_name = p_raw.strip()
+            match = _match_power(p_name, CAT_POWERS)
+            npc_result['powers'].append({
+                'original': p_raw,
+                'name': p_name,
+                'matched': match is not None,
+                'source': match.get('source', 'Core') if match else 'Custom'
+            })
+            total_items += 1
+
+        if npc_result['hindrances'] or npc_result['edges'] or npc_result['powers']:
+            npc_result['already_has_managed'] = {
+                'hindrances': existing_h, 'edges': existing_e, 'powers': existing_p
+            }
+            result_npcs.append(npc_result)
+
+    return jsonify({'npcs': result_npcs, 'total_items': total_items})
+
+@app.route('/api/migration/execute', methods=['POST'])
+def api_migration_execute():
+    from powers import POWERS as CAT_POWERS
+    conn = get_db()
+    npcs = rows_to_list(conn.execute(
+        "SELECT id, name, hindrances_json, edges_json, powers_json, power_points, arcane_bg FROM npcs"
+    ).fetchall())
+
+    migrated_npcs = 0
+    migrated_items = 0
+    warnings = []
+
+    for npc in npcs:
+        hindrances_raw = json.loads(npc.get('hindrances_json') or '[]')
+        edges_raw = json.loads(npc.get('edges_json') or '[]')
+        powers_raw = json.loads(npc.get('powers_json') or '[]')
+
+        if not hindrances_raw and not edges_raw and not powers_raw:
+            continue
+
+        npc_touched = False
+
+        # Migrate hindrances
+        for h_raw in hindrances_raw:
+            parsed = _parse_hindrance(h_raw)
+            source = _match_hindrance(parsed, CAT_HINDRANCES) or 'Custom'
+            # Check for duplicate
+            existing = conn.execute(
+                "SELECT id FROM npc_hindrances WHERE npc_id=? AND name=?",
+                (npc['id'], parsed['name'])
+            ).fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO npc_hindrances (npc_id, name, severity, source, notes) VALUES (?,?,?,?,?)",
+                    (npc['id'], parsed['name'], parsed['severity'], source, parsed['notes'])
+                )
+                migrated_items += 1
+                npc_touched = True
+            else:
+                warnings.append(f"{npc['name']}: hindrance '{parsed['name']}' already exists, skipped")
+
+        # Migrate edges
+        for e_raw in edges_raw:
+            parsed = _parse_edge(e_raw)
+            source = _match_edge(parsed, CAT_EDGES) or 'Custom'
+            existing = conn.execute(
+                "SELECT id FROM npc_edges WHERE npc_id=? AND name=?",
+                (npc['id'], parsed['name'])
+            ).fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO npc_edges (npc_id, name, source, notes) VALUES (?,?,?,?)",
+                    (npc['id'], parsed['name'], source, parsed['notes'])
+                )
+                migrated_items += 1
+                npc_touched = True
+            else:
+                warnings.append(f"{npc['name']}: edge '{parsed['name']}' already exists, skipped")
+
+        # Migrate powers
+        for p_raw in powers_raw:
+            p_name = p_raw.strip()
+            match = _match_power(p_name, CAT_POWERS)
+            source = match.get('source', 'Core') if match else 'Custom'
+            pp_cost = match.get('pp', 0) if match else 0
+            existing = conn.execute(
+                "SELECT id FROM npc_powers WHERE npc_id=? AND name=?",
+                (npc['id'], p_name)
+            ).fetchone()
+            if not existing:
+                conn.execute(
+                    "INSERT INTO npc_powers (npc_id, name, power_points, source, notes) VALUES (?,?,?,?,?)",
+                    (npc['id'], p_name, pp_cost, source, '')
+                )
+                migrated_items += 1
+                npc_touched = True
+            else:
+                warnings.append(f"{npc['name']}: power '{p_name}' already exists, skipped")
+
+        # Clear legacy JSON fields
+        if npc_touched:
+            conn.execute(
+                "UPDATE npcs SET hindrances_json='[]', edges_json='[]', powers_json='[]' WHERE id=?",
+                (npc['id'],)
+            )
+            migrated_npcs += 1
+
+    conn.commit()
+    return jsonify({
+        'success': True,
+        'migrated_npcs': migrated_npcs,
+        'migrated_items': migrated_items,
+        'warnings': warnings
+    })
 
 # ============================================================
 # PORTRAIT MANAGEMENT
