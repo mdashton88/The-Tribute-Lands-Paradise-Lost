@@ -231,6 +231,13 @@ HTML_TEMPLATE = '''
             display: flex;
             align-items: center;
             justify-content: space-between;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            height: 52px;
+            box-sizing: border-box;
         }
         header h1 {
             font-size: 18px;
@@ -259,6 +266,7 @@ HTML_TEMPLATE = '''
         .container {
             display: flex;
             height: calc(100vh - 52px);
+            margin-top: 52px;
         }
 
         /* --- SIDEBAR --- */
