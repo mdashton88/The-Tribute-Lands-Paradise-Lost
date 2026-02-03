@@ -1254,12 +1254,12 @@ function renderNPCDetail(n) {
     const gearPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('gear',${n.id},'${safeName}')">Gear ✎</h3>${gearSummary}</div>`;
 
     const hindSummary = (n.hindrance_items && n.hindrance_items.length) ?
-        n.hindrance_items.map(h => `<div class="weapon-entry">${h.name} (${h.severity})</div>`).join('') :
+        n.hindrance_items.map(h => `<div class="weapon-entry">${h.name} (${h.severity}${h.notes ? ' — '+h.notes : ''})</div>`).join('') :
         ((n.hindrances||[]).length ? n.hindrances.map(h => `<div class="weapon-entry">${h}</div>`).join('') + '<div style="font-size:10px;color:var(--text-dim)">Legacy</div>' : '<div style="color:var(--text-dim);font-size:12px">None</div>');
     const hindrancesPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('hindrances',${n.id},'${safeName}')">Hindrances ✎</h3>${hindSummary}</div>`;
 
     const edgSummary = (n.edge_items && n.edge_items.length) ?
-        n.edge_items.map(e => `<div class="weapon-entry">${e.name}</div>`).join('') :
+        n.edge_items.map(e => `<div class="weapon-entry">${e.name}${e.notes ? ' ('+e.notes+')' : ''}</div>`).join('') :
         ((n.edges||[]).length ? n.edges.map(e => `<div class="weapon-entry">${e}</div>`).join('') + '<div style="font-size:10px;color:var(--text-dim)">Legacy</div>' : '<div style="color:var(--text-dim);font-size:12px">None</div>');
     const edgesPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('edges',${n.id},'${safeName}')">Edges ✎</h3>${edgSummary}</div>`;
 
