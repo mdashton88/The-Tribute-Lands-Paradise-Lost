@@ -10,9 +10,9 @@ Requires: pip install flask
 """
 
 VERSION = {
-    "version": "2.1.0",
-    "updated": "2025-02-02",
-    "changes": "Resizable columns with drag handles + px width gauges"
+    "version": "2.2.0",
+    "updated": "2025-02-03",
+    "changes": "One-click update from Downloads + GitHub, fixed popover clipping, audit in workspace"
 }
 
 import sqlite3
@@ -51,6 +51,43 @@ except ImportError:
 APP_DIR = Path(__file__).parent
 DB_PATH = APP_DIR / "tribute_lands_npcs.db"
 SCHEMA_PATH = APP_DIR / "schema.sql"
+CONFIG_PATH = APP_DIR / "config.json"
+
+def load_config():
+    """Load config from JSON file, creating defaults if missing."""
+    defaults = {
+        "repo_path": str(APP_DIR),
+        "backup_dir": str(APP_DIR / "backups")
+    }
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH) as f:
+                saved = json.load(f)
+            # Merge with defaults (so new keys get added on upgrade)
+            for k, v in defaults.items():
+                if k not in saved:
+                    saved[k] = v
+            return saved
+        except Exception:
+            return defaults
+    return defaults
+
+def save_config(cfg):
+    """Save config to JSON file."""
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(cfg, f, indent=2)
+
+def get_repo_path():
+    """Get the configured repository path."""
+    cfg = load_config()
+    return Path(cfg.get("repo_path", str(APP_DIR)))
+
+def get_backup_dir():
+    """Get the configured backup directory, creating it if needed."""
+    cfg = load_config()
+    p = Path(cfg.get("backup_dir", str(APP_DIR / "backups")))
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 app = Flask(__name__)
 
@@ -626,6 +663,21 @@ HTML_TEMPLATE = '''
             padding-bottom: 5px;
             border-bottom: 1px solid var(--accent-dim);
         }
+        .stat-block-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--accent-dim);
+        }
+        .stat-block-tier {
+            font-size: 12px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 700;
+        }
         .stat-block-panel .stat-section {
             margin-bottom: 8px;
         }
@@ -821,25 +873,24 @@ HTML_TEMPLATE = '''
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
 
-        /* ── DERIVED STAT POPOVERS ── */
+        /* ── DERIVED STAT POPOVERS (fixed-position, no clipping) ── */
         .derived-item { position: relative; cursor: help; }
-        .derived-popover {
+        .derived-popover { display: none; }
+        #globalTooltip {
             display: none;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
+            position: fixed;
             background: #1e1e22;
             border: 1px solid var(--accent-dim);
             border-radius: 6px;
             padding: 10px 14px;
             min-width: 220px;
-            z-index: 9999;
+            z-index: 99999;
             box-shadow: 0 4px 16px rgba(0,0,0,0.5);
             font-size: 12px;
             white-space: nowrap;
+            pointer-events: none;
         }
-        .derived-popover::after {
+        #globalTooltip::after {
             content: '';
             position: absolute;
             top: 100%;
@@ -848,7 +899,6 @@ HTML_TEMPLATE = '''
             border: 6px solid transparent;
             border-top-color: var(--accent-dim);
         }
-        .derived-item:hover .derived-popover { display: block; }
         .pop-title {
             font-weight: 700;
             color: var(--accent);
@@ -935,6 +985,9 @@ HTML_TEMPLATE = '''
     </style>
 </head>
 <body>
+
+<!-- Global tooltip for derived stats (lives outside overflow containers) -->
+<div id="globalTooltip"></div>
 
 <header>
     <div>
@@ -1163,10 +1216,12 @@ HTML_TEMPLATE = '''
 
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay" id="settingsModal">
-    <div class="modal" style="width:550px;max-height:80vh">
+    <div class="modal" style="width:600px;max-height:80vh">
         <h3>⚙️ Settings</h3>
         <div style="display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--border)">
             <button class="btn sm" id="tabVersions" onclick="showSettingsTab('versions')" style="border-radius:4px 4px 0 0">Versions</button>
+            <button class="btn sm" id="tabBackup" onclick="showSettingsTab('backup')" style="border-radius:4px 4px 0 0">Backup</button>
+            <button class="btn sm" id="tabPaths" onclick="showSettingsTab('paths')" style="border-radius:4px 4px 0 0">Paths</button>
             <button class="btn sm" id="tabMigration" onclick="showSettingsTab('migration')" style="border-radius:4px 4px 0 0">Migration</button>
             <button class="btn sm" id="tabAbout" onclick="showSettingsTab('about')" style="border-radius:4px 4px 0 0">About</button>
         </div>
@@ -1672,7 +1727,7 @@ function auditSummary(findings) {
 
 function renderAuditBadge(npcId, findings) {
     const s = auditSummary(findings);
-    return `<span class="audit-badge ${s.status}" onclick="toggleAuditPanel(${npcId})" title="Click for full audit">${s.icon} ${s.label}</span>`;
+    return `<span class="audit-badge ${s.status}" onclick="openAuditWorkspace(${npcId})" title="Click for full audit">${s.icon} ${s.label}</span>`;
 }
 
 function renderAuditPanel(npcId, findings) {
@@ -1701,12 +1756,32 @@ function renderAuditPanel(npcId, findings) {
         });
         html += '</div>';
     }
-    return `<div class="audit-panel" id="auditPanel_${npcId}">${html}</div>`;
+    return html;
 }
 
-function toggleAuditPanel(npcId) {
-    const p = document.getElementById('auditPanel_' + npcId);
-    if (p) p.classList.toggle('open');
+function openAuditWorkspace(npcId) {
+    const ws = document.getElementById('workspacePanel');
+    const html = window._auditHtml && window._auditHtml[npcId] ? window._auditHtml[npcId] : '<div style="color:var(--text-dim)">No audit data available</div>';
+    ws.innerHTML = `<div class="workspace-header"><h3>Build Audit</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div><div class="audit-panel open">${html}</div>`;
+}
+
+// ── DERIVED STAT TOOLTIP (fixed position, no clipping) ──
+function showDerivedTip(el) {
+    const pop = el.querySelector('.derived-popover');
+    if (!pop) return;
+    const tip = document.getElementById('globalTooltip');
+    tip.innerHTML = pop.innerHTML;
+    tip.style.display = 'block';
+    const rect = el.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let left = rect.left + rect.width/2 - tipRect.width/2;
+    if (left < 4) left = 4;
+    if (left + tipRect.width > window.innerWidth - 4) left = window.innerWidth - tipRect.width - 4;
+    tip.style.left = left + 'px';
+    tip.style.top = (rect.top - tipRect.height - 10) + 'px';
+}
+function hideDerivedTip() {
+    document.getElementById('globalTooltip').style.display = 'none';
 }
 
 // ── POPOVER BUILDERS ──
@@ -1804,7 +1879,9 @@ function renderNPCDetail(n) {
         // Build audit
         const auditFindings = auditCharacter(n);
         const auditBadge = renderAuditBadge(n.id, auditFindings);
-        const auditPanel = renderAuditPanel(n.id, auditFindings);
+        // Store audit HTML for workspace display
+        window._auditHtml = window._auditHtml || {};
+        window._auditHtml[n.id] = renderAuditPanel(n.id, auditFindings);
         const skills = (n.skills||[]).map(s => `${s.name} ${dieStr(s.die)}`).join(', ');
         const hindrances = (n.hindrance_items||[]).length ?
             `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrance_items.map(h => h.severity === 'Major' ? `<strong>${h.name}</strong> (Major${h.notes ? ', '+h.notes : ''})` : `${h.name}${h.notes ? ' ('+h.notes+')' : ''}`).join(', ')}</div></div>` :
@@ -1823,7 +1900,10 @@ function renderNPCDetail(n) {
         const bennies = n.tier === 'Wild Card' ? `<div class="derived-item"><div class="derived-num">${n.bennies}</div><div class="derived-label">Bennies</div></div>` : '';
         statsPanel = `
             <div class="stat-block-panel">
-                <h3>${n.name}${wcLabel} — ${tierText}</h3>
+                <div class="stat-block-header-row">
+                    <span class="stat-block-tier">${tierText}${wcLabel}</span>
+                    ${auditBadge}
+                </div>
                 <div class="stat-section">
                     <span class="stat-section-label">Attributes</span>
                     <div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div>
@@ -1833,17 +1913,15 @@ function renderNPCDetail(n) {
                     <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${safeName}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
-                    <div class="derived-item"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
-                    <div class="derived-item"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div><div class="derived-popover">${parryPop}</div></div>
-                    <div class="derived-item"><div class="derived-num" style="color:${toughColour}">${tough}</div><div class="derived-label">Toughness</div><div class="derived-popover">${toughPop}</div></div>
+                    <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
+                    <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div><div class="derived-popover">${parryPop}</div></div>
+                    <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${toughColour}">${tough}</div><div class="derived-label">Toughness</div><div class="derived-popover">${toughPop}</div></div>
                     ${bennies}
-                    <div style="margin-left:auto;align-self:center">${auditBadge}</div>
                 </div>
                 ${hindrances}${edges}${powers}${specials}
-                ${auditPanel}
             </div>`;
     } else {
-        statsPanel = `<div class="stat-block-panel"><h3>${n.name} — ${tierText}</h3><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="openEditModal(${n.id})">Edit NPC</button></div></div>`;
+        statsPanel = `<div class="stat-block-panel"><div class="stat-block-header-row"><span class="stat-block-tier">${tierText}</span></div><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="openEditModal(${n.id})">Edit NPC</button></div></div>`;
     }
 
     // Summary panels — compact, click header to open workspace
@@ -3036,19 +3114,105 @@ async function showSettingsTab(tab) {
             </table>
             <div id="updateSection" style="margin-top:16px;padding:12px;background:var(--bg-dark);border-radius:4px">
                 <div style="display:flex;align-items:center;justify-content:space-between">
-                    <span style="font-size:12px;color:var(--text-dim)">Check for updates from GitHub</span>
+                    <span style="font-size:12px;color:var(--text-dim)">Import from Downloads + sync GitHub</span>
                     <div>
-                        <button class="btn" onclick="openGitHub()" style="font-size:12px;margin-right:8px">
-                            📂 View Repo
-                        </button>
                         <button class="btn primary" onclick="runUpdate()" id="updateBtn" style="font-size:12px">
-                            🔄 Check for Updates
+                            🔄 Update
                         </button>
                     </div>
+                </div>
+                <div style="font-size:10px;color:var(--text-dim);margin-top:6px">
+                    Checks your Downloads folder for new files from Claude, copies them in, commits to GitHub, and pulls any remote changes.
                 </div>
                 <div id="updateStatus" style="margin-top:8px;display:none"></div>
             </div>
         `;
+    } else if (tab === 'backup') {
+        content.innerHTML = '<div style="color:var(--text-dim)">Loading backup info...</div>';
+        const data = await api('/api/backups');
+        let backupRows = '';
+        if (data.backups && data.backups.length) {
+            for (const b of data.backups) {
+                backupRows += `<tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:6px 4px;font-size:12px">${b.name}</td>
+                    <td style="padding:6px 4px;font-size:11px;color:var(--text-dim)">${b.size}</td>
+                    <td style="padding:6px 4px;font-size:11px;color:var(--text-dim)">${b.date}</td>
+                    <td style="padding:6px 4px;text-align:right">
+                        <button class="btn" onclick="restoreBackup('${b.name}')" style="font-size:11px;padding:2px 8px">Restore</button>
+                        <button class="btn" onclick="deleteBackup('${b.name}')" style="font-size:11px;padding:2px 8px;margin-left:4px">✗</button>
+                    </td>
+                </tr>`;
+            }
+        } else {
+            backupRows = '<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim);font-size:12px">No backups yet</td></tr>';
+        }
+        content.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                <div>
+                    <div style="font-size:13px;font-weight:600">Database Backups</div>
+                    <div style="font-size:11px;color:var(--text-dim)">Backup directory: ${data.backup_dir || 'default'}</div>
+                </div>
+                <button class="btn primary" onclick="createBackup()" id="backupBtn" style="font-size:12px">
+                    💾 Backup Now
+                </button>
+            </div>
+            <div id="backupStatus" style="margin-bottom:8px;display:none"></div>
+            <table style="width:100%;font-size:13px;border-collapse:collapse">
+                <tr style="border-bottom:1px solid var(--border)">
+                    <th style="text-align:left;padding:6px 4px;color:var(--text-dim)">File</th>
+                    <th style="text-align:left;padding:6px 4px;color:var(--text-dim)">Size</th>
+                    <th style="text-align:left;padding:6px 4px;color:var(--text-dim)">Date</th>
+                    <th style="text-align:right;padding:6px 4px;color:var(--text-dim)">Actions</th>
+                </tr>
+                ${backupRows}
+            </table>
+            <div style="margin-top:12px;font-size:10px;color:var(--text-dim)">
+                Restore replaces the current database with the backup copy. A safety backup of the current state is created automatically before any restore.
+            </div>
+        `;
+
+    } else if (tab === 'paths') {
+        content.innerHTML = '<div style="color:var(--text-dim)">Loading paths...</div>';
+        const data = await api('/api/config');
+        content.innerHTML = `
+            <div style="margin-bottom:16px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Repository Path</div>
+                <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+                    Where the Git repository lives. Set this to your OneDrive folder to keep everything synced. 
+                    The Update button will copy files here and run Git commands from this location.
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" id="cfgRepoPath" value="${data.repo_path || ''}" 
+                        style="flex:1;padding:6px 8px;background:var(--bg-dark);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px;font-family:monospace">
+                    <button class="btn" onclick="browseFolder('cfgRepoPath')" style="font-size:11px" title="Browse">📂</button>
+                </div>
+            </div>
+            <div style="margin-bottom:16px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">Backup Directory</div>
+                <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+                    Where database backups are stored. Defaults to a 'backups' subfolder in the app directory.
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" id="cfgBackupDir" value="${data.backup_dir || ''}" 
+                        style="flex:1;padding:6px 8px;background:var(--bg-dark);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px;font-family:monospace">
+                    <button class="btn" onclick="browseFolder('cfgBackupDir')" style="font-size:11px" title="Browse">📂</button>
+                </div>
+            </div>
+            <div style="margin-bottom:12px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:4px">App Directory <span style="font-size:10px;color:var(--text-dim)">(read-only)</span></div>
+                <div style="padding:6px 8px;background:var(--bg-dark);border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:monospace;color:var(--text-dim)">
+                    ${data.app_dir || ''}
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn primary" onclick="savePaths()" id="savePathsBtn" style="font-size:12px">💾 Save Paths</button>
+                <div id="pathsStatus" style="font-size:11px"></div>
+            </div>
+            <div style="margin-top:12px;font-size:10px;color:var(--text-dim)">
+                Note: The database file always stays in the App Directory to avoid sync conflicts. Only code files and Git operations use the Repository Path.
+            </div>
+        `;
+
     } else if (tab === 'migration') {
         content.innerHTML = '<div style="color:var(--text-dim)">Scanning legacy data...</div>';
         const preview = await api('/api/migration/preview');
@@ -3119,6 +3283,97 @@ function openGitHub() {
     window.open('https://github.com/mdashton88/The-Tribute-Lands-Paradise-Lost', '_blank');
 }
 
+// ── Backup functions ──
+
+async function createBackup() {
+    const btn = document.getElementById('backupBtn');
+    const status = document.getElementById('backupStatus');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Backing up...';
+    status.style.display = 'block';
+    try {
+        const result = await api('/api/backups', 'POST');
+        if (result.success) {
+            status.innerHTML = `<span style="color:var(--success)">✓ ${result.message}</span>`;
+            // Refresh the backup list
+            setTimeout(() => showSettingsTab('backup'), 1000);
+        } else {
+            status.innerHTML = `<span style="color:var(--danger)">✗ ${result.message}</span>`;
+        }
+    } catch (err) {
+        status.innerHTML = `<span style="color:var(--danger)">✗ Error: ${err.message}</span>`;
+    }
+    btn.disabled = false;
+    btn.innerHTML = '💾 Backup Now';
+}
+
+async function restoreBackup(name) {
+    if (!confirm(`Restore database from "${name}"?\n\nThis will replace your current database. A safety backup will be created first.`)) return;
+    const status = document.getElementById('backupStatus');
+    status.style.display = 'block';
+    status.innerHTML = '<span style="color:var(--text-dim)">Restoring...</span>';
+    try {
+        const result = await api('/api/backups/restore', 'POST', {name});
+        if (result.success) {
+            status.innerHTML = `<span style="color:var(--success)">✓ ${result.message}</span>` +
+                '<br><button class="btn primary" onclick="location.reload()" style="margin-top:8px;font-size:12px">🔄 Restart Now</button>';
+        } else {
+            status.innerHTML = `<span style="color:var(--danger)">✗ ${result.message}</span>`;
+        }
+    } catch (err) {
+        status.innerHTML = `<span style="color:var(--danger)">✗ Error: ${err.message}</span>`;
+    }
+}
+
+async function deleteBackup(name) {
+    if (!confirm(`Delete backup "${name}"? This cannot be undone.`)) return;
+    try {
+        const result = await api('/api/backups/delete', 'POST', {name});
+        if (result.success) {
+            showSettingsTab('backup');
+        }
+    } catch (err) {
+        alert('Error deleting backup: ' + err.message);
+    }
+}
+
+// ── Paths / Config functions ──
+
+async function savePaths() {
+    const btn = document.getElementById('savePathsBtn');
+    const status = document.getElementById('pathsStatus');
+    btn.disabled = true;
+    
+    const repo_path = document.getElementById('cfgRepoPath').value.trim();
+    const backup_dir = document.getElementById('cfgBackupDir').value.trim();
+    
+    try {
+        const result = await api('/api/config', 'POST', {repo_path, backup_dir});
+        if (result.success) {
+            status.innerHTML = `<span style="color:var(--success)">✓ Paths saved</span>`;
+        } else {
+            status.innerHTML = `<span style="color:var(--danger)">✗ ${result.message}</span>`;
+        }
+    } catch (err) {
+        status.innerHTML = `<span style="color:var(--danger)">✗ Error: ${err.message}</span>`;
+    }
+    btn.disabled = false;
+    setTimeout(() => { status.innerHTML = ''; }, 3000);
+}
+
+async function browseFolder(inputId) {
+    // Use the server-side folder picker
+    try {
+        const result = await api('/api/browse-folder', 'POST', {current: document.getElementById(inputId).value});
+        if (result.success && result.path) {
+            document.getElementById(inputId).value = result.path;
+        }
+    } catch (err) {
+        // Fallback: just alert the user to paste the path
+        alert('Folder picker not available — please paste the full path directly into the field.');
+    }
+}
+
 async function executeMigration() {
     const btn = document.getElementById('migrateBtn');
     const status = document.getElementById('migrateStatus');
@@ -3150,9 +3405,9 @@ async function runUpdate() {
     const status = document.getElementById('updateStatus');
     
     btn.disabled = true;
-    btn.innerHTML = '⏳ Checking...';
+    btn.innerHTML = '⏳ Updating...';
     status.style.display = 'block';
-    status.innerHTML = '<span style="color:var(--text-dim)">Connecting to GitHub...</span>';
+    status.innerHTML = '<span style="color:var(--text-dim)">Checking Downloads folder + GitHub...</span>';
     
     try {
         const resp = await fetch('/api/update', {method: 'POST'});
@@ -3161,18 +3416,15 @@ async function runUpdate() {
         if (data.success) {
             if (data.needs_restart) {
                 status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>' +
-                    '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' + 
-                    (data.details || '') + '</span>' +
+                    (data.details ? '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' + data.details + '</span>' : '') +
                     '<br><button class="btn primary" onclick="location.reload()" style="margin-top:8px;font-size:12px">🔄 Restart Now</button>';
             } else {
                 status.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>';
             }
         } else if (data.use_desktop) {
-            // Git CLI not found — offer to open GitHub Desktop
             status.innerHTML = '<span style="color:var(--warning)">Git CLI not installed.</span>' +
                 '<br><span style="font-size:11px;color:var(--text-dim);margin-top:4px;display:block">' +
-                'Click below to open GitHub Desktop, then pull and restart.</span>' +
-                '<br><button class="btn primary" onclick="openGitHubDesktop()" style="margin-top:8px;font-size:12px">📂 Open GitHub Desktop</button>';
+                'Install Git from git-scm.com for full update support.</span>';
         } else {
             status.innerHTML = '<span style="color:var(--danger)">✗ ' + data.message + '</span>';
         }
@@ -3181,7 +3433,7 @@ async function runUpdate() {
     }
     
     btn.disabled = false;
-    btn.innerHTML = '🔄 Check for Updates';
+    btn.innerHTML = '🔄 Update';
 }
 
 async function openGitHubDesktop() {
@@ -3750,29 +4002,131 @@ def api_versions():
 
 @app.route('/api/update', methods=['POST'])
 def api_update():
-    """Run git pull to update from GitHub."""
+    """Check Downloads for new files, sync to GitHub, then pull updates."""
+    results = []
+    copied_files = []
+    repo_path = get_repo_path()
+
+    # ── Step 1: Check Downloads for new files ──
+    downloads = Path.home() / "Downloads"
+    recognised = [
+        'app.py', 'seed_data.py', 'npc_manager.py', 'fg_export.py',
+        'equipment_catalogue.py', 'schema.sql', 'canon_corrections.py',
+        'START_NPC_DATABASE.bat', 'SYNC_TO_GITHUB.bat', 'UPDATE_FROM_CLAUDE.bat',
+        '.gitignore', 'README.md'
+    ]
+    subfolders = ['edges', 'hindrances', 'powers', 'equipment']
+
+    if downloads.exists():
+        # Check top-level recognised files
+        for fname in recognised:
+            src = downloads / fname
+            if src.exists():
+                try:
+                    import shutil
+                    # Always copy to app dir (where the running code lives)
+                    shutil.copy2(str(src), str(APP_DIR / fname))
+                    # Also copy to repo dir if it's different
+                    if repo_path != APP_DIR:
+                        shutil.copy2(str(src), str(repo_path / fname))
+                    src.unlink()
+                    copied_files.append(fname)
+                except Exception as e:
+                    results.append(f"Could not copy {fname}: {e}")
+
+        # Check subfolder .py files (e.g. edges/ammaria.py)
+        for folder in subfolders:
+            src_dir = downloads / folder
+            if src_dir.exists() and src_dir.is_dir():
+                for py_file in src_dir.glob("*.py"):
+                    try:
+                        import shutil
+                        dst_dir = APP_DIR / folder
+                        dst_dir.mkdir(exist_ok=True)
+                        shutil.copy2(str(py_file), str(dst_dir / py_file.name))
+                        if repo_path != APP_DIR:
+                            repo_dst = repo_path / folder
+                            repo_dst.mkdir(exist_ok=True)
+                            shutil.copy2(str(py_file), str(repo_dst / py_file.name))
+                        py_file.unlink()
+                        copied_files.append(f"{folder}/{py_file.name}")
+                    except Exception as e:
+                        results.append(f"Could not copy {folder}/{py_file.name}: {e}")
+
+    # ── Step 2: If we copied files, commit and push from repo dir ──
+    if copied_files:
+        try:
+            subprocess.run(['git', 'add', '-A'], cwd=repo_path, capture_output=True, text=True, timeout=10)
+            msg = f"Update from Claude: {', '.join(copied_files)}"
+            subprocess.run(['git', 'commit', '-m', msg], cwd=repo_path, capture_output=True, text=True, timeout=10)
+            push_result = subprocess.run(['git', 'push'], cwd=repo_path, capture_output=True, text=True, timeout=30)
+            if push_result.returncode != 0:
+                results.append(f"Push warning: {push_result.stderr.strip()}")
+        except FileNotFoundError:
+            results.append("Git not available — files copied locally but not pushed")
+        except Exception as e:
+            results.append(f"Git sync error: {e}")
+
+    # ── Step 3: Pull any remote updates ──
     try:
-        # Run git pull from the app directory
         result = subprocess.run(
-            ['git', 'pull'],
-            cwd=APP_DIR,
+            ['git', 'pull', '--ff-only'],
+            cwd=repo_path,
             capture_output=True,
             text=True,
             timeout=30
         )
-        
+
         output = result.stdout.strip()
+        needs_restart = False
+
         if result.returncode == 0:
-            if 'Already up to date' in output:
+            # If repo is separate from app, sync pulled files back to app dir
+            if repo_path != APP_DIR and 'Already up to date' not in output:
+                import shutil
+                for fname in recognised:
+                    repo_file = repo_path / fname
+                    if repo_file.exists():
+                        shutil.copy2(str(repo_file), str(APP_DIR / fname))
+                for folder in subfolders:
+                    repo_sub = repo_path / folder
+                    if repo_sub.exists():
+                        app_sub = APP_DIR / folder
+                        app_sub.mkdir(exist_ok=True)
+                        for py_file in repo_sub.glob("*.py"):
+                            shutil.copy2(str(py_file), str(app_sub / py_file.name))
+
+            if 'Already up to date' in output and not copied_files:
                 return jsonify({"success": True, "message": "Already up to date!", "needs_restart": False})
             else:
-                return jsonify({"success": True, "message": "Updates pulled! Restart to apply.", "needs_restart": True, "details": output})
+                needs_restart = True
+                parts = []
+                if copied_files:
+                    parts.append(f"Imported {len(copied_files)} file(s) from Downloads: {', '.join(copied_files)}")
+                if 'Already up to date' not in output:
+                    parts.append(f"Pulled updates from GitHub")
+                if results:
+                    parts.append('; '.join(results))
+                return jsonify({
+                    "success": True,
+                    "message": '. '.join(parts) + '. Restart to apply.',
+                    "needs_restart": needs_restart,
+                    "details": output,
+                    "copied": copied_files
+                })
         else:
-            return jsonify({"success": False, "message": f"Git error: {result.stderr.strip()}"})
+            msg = f"Git pull error: {result.stderr.strip()}"
+            if copied_files:
+                msg = f"Imported {len(copied_files)} file(s) locally, but pull failed: {result.stderr.strip()}"
+            return jsonify({"success": False, "message": msg})
     except subprocess.TimeoutExpired:
-        return jsonify({"success": False, "message": "Update timed out. Check your connection."})
+        msg = "Update timed out."
+        if copied_files:
+            msg = f"Imported {len(copied_files)} file(s) locally. Push/pull timed out — check your connection."
+        return jsonify({"success": True if copied_files else False, "message": msg, "needs_restart": bool(copied_files), "copied": copied_files})
     except FileNotFoundError:
-        # Git CLI not found — try to open GitHub Desktop instead
+        if copied_files:
+            return jsonify({"success": True, "message": f"Imported {len(copied_files)} file(s) from Downloads (Git not available — local only). Restart to apply.", "needs_restart": True, "copied": copied_files})
         return jsonify({"success": False, "message": "git_not_found", "use_desktop": True})
     except Exception as e:
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
@@ -3798,6 +4152,158 @@ def api_open_github_desktop():
             return jsonify({"success": False, "message": "Please open GitHub Desktop manually."})
     except Exception as e:
         return jsonify({"success": False, "message": f"Could not open GitHub Desktop: {str(e)}"})
+
+# ============================================================
+# CONFIG & PATHS
+# ============================================================
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Return current config."""
+    cfg = load_config()
+    cfg['app_dir'] = str(APP_DIR)
+    return jsonify(cfg)
+
+@app.route('/api/config', methods=['POST'])
+def api_save_config():
+    """Save config paths."""
+    data = request.json
+    cfg = load_config()
+    
+    # Validate repo_path
+    repo_path = data.get('repo_path', '').strip()
+    if repo_path:
+        rp = Path(repo_path)
+        if not rp.exists():
+            return jsonify({"success": False, "message": f"Repository path does not exist: {repo_path}"})
+        cfg['repo_path'] = str(rp)
+    
+    # Validate backup_dir
+    backup_dir = data.get('backup_dir', '').strip()
+    if backup_dir:
+        bp = Path(backup_dir)
+        try:
+            bp.mkdir(parents=True, exist_ok=True)
+            cfg['backup_dir'] = str(bp)
+        except Exception as e:
+            return jsonify({"success": False, "message": f"Cannot create backup directory: {e}"})
+    
+    save_config(cfg)
+    return jsonify({"success": True})
+
+@app.route('/api/browse-folder', methods=['POST'])
+def api_browse_folder():
+    """Open a native folder picker dialog (Windows only)."""
+    try:
+        if sys.platform == 'win32':
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes('-topmost', True)
+            current = request.json.get('current', '')
+            initial = current if current and Path(current).exists() else str(Path.home())
+            folder = filedialog.askdirectory(initialdir=initial, title="Select Folder")
+            root.destroy()
+            if folder:
+                return jsonify({"success": True, "path": folder})
+            return jsonify({"success": False, "message": "Cancelled"})
+        else:
+            return jsonify({"success": False, "message": "Folder picker only available on Windows"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+# ============================================================
+# DATABASE BACKUP & RESTORE
+# ============================================================
+
+import shutil as _shutil
+from datetime import datetime as _datetime
+
+@app.route('/api/backups', methods=['GET'])
+def api_list_backups():
+    """List available database backups."""
+    backup_dir = get_backup_dir()
+    backups = []
+    for f in sorted(backup_dir.glob("*.db"), key=lambda p: p.stat().st_mtime, reverse=True):
+        stat = f.stat()
+        size_kb = stat.st_size / 1024
+        if size_kb > 1024:
+            size_str = f"{size_kb/1024:.1f} MB"
+        else:
+            size_str = f"{size_kb:.0f} KB"
+        backups.append({
+            "name": f.name,
+            "size": size_str,
+            "date": _datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        })
+    return jsonify({"backups": backups, "backup_dir": str(backup_dir)})
+
+@app.route('/api/backups', methods=['POST'])
+def api_create_backup():
+    """Create a timestamped backup of the current database."""
+    try:
+        if not DB_PATH.exists():
+            return jsonify({"success": False, "message": "No database file found"})
+        
+        backup_dir = get_backup_dir()
+        timestamp = _datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_name = f"tribute_lands_npcs_{timestamp}.db"
+        backup_path = backup_dir / backup_name
+        
+        _shutil.copy2(str(DB_PATH), str(backup_path))
+        
+        size_kb = backup_path.stat().st_size / 1024
+        size_str = f"{size_kb/1024:.1f} MB" if size_kb > 1024 else f"{size_kb:.0f} KB"
+        
+        return jsonify({"success": True, "message": f"Backup created: {backup_name} ({size_str})"})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Backup failed: {str(e)}"})
+
+@app.route('/api/backups/restore', methods=['POST'])
+def api_restore_backup():
+    """Restore database from a backup file."""
+    try:
+        name = request.json.get('name', '')
+        if not name:
+            return jsonify({"success": False, "message": "No backup specified"})
+        
+        backup_dir = get_backup_dir()
+        backup_path = backup_dir / name
+        
+        if not backup_path.exists():
+            return jsonify({"success": False, "message": f"Backup not found: {name}"})
+        
+        # Safety backup of current state before restore
+        safety_name = f"tribute_lands_npcs_pre_restore_{_datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        safety_path = backup_dir / safety_name
+        _shutil.copy2(str(DB_PATH), str(safety_path))
+        
+        # Restore
+        _shutil.copy2(str(backup_path), str(DB_PATH))
+        
+        return jsonify({"success": True, "message": f"Restored from {name}. Safety backup saved as {safety_name}. Restart to load."})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Restore failed: {str(e)}"})
+
+@app.route('/api/backups/delete', methods=['POST'])
+def api_delete_backup():
+    """Delete a backup file."""
+    try:
+        name = request.json.get('name', '')
+        if not name:
+            return jsonify({"success": False, "message": "No backup specified"})
+        
+        backup_dir = get_backup_dir()
+        backup_path = backup_dir / name
+        
+        if not backup_path.exists():
+            return jsonify({"success": False, "message": f"Backup not found: {name}"})
+        
+        backup_path.unlink()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Delete failed: {str(e)}"})
 
 # ============================================================
 # LEGACY DATA MIGRATION
