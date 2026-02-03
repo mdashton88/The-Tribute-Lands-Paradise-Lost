@@ -820,6 +820,118 @@ HTML_TEMPLATE = '''
         ::-webkit-scrollbar-track { background: var(--bg-dark); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* ── DERIVED STAT POPOVERS ── */
+        .derived-item { position: relative; cursor: help; }
+        .derived-popover {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e1e22;
+            border: 1px solid var(--accent-dim);
+            border-radius: 6px;
+            padding: 10px 14px;
+            min-width: 220px;
+            z-index: 100;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .derived-popover::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: var(--accent-dim);
+        }
+        .derived-item:hover .derived-popover { display: block; }
+        .pop-title {
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #333;
+        }
+        .pop-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+            color: var(--text-dim);
+        }
+        .pop-row .pop-val { color: var(--text); font-family: monospace; font-weight: 600; }
+        .pop-divider { border-top: 1px solid #444; margin: 4px 0; }
+        .pop-total {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0 0;
+            font-weight: 700;
+        }
+        .pop-total .pop-val { font-size: 14px; }
+        .pop-ok { color: var(--success, #4a4); }
+        .pop-err { color: var(--danger, #c44); }
+        .pop-note { font-size: 10px; color: var(--text-dim); margin-top: 4px; font-style: italic; }
+
+        /* ── AUDIT SYSTEM ── */
+        .audit-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            user-select: none;
+        }
+        .audit-badge.pass { background: rgba(70,160,70,0.15); color: #6c6; border: 1px solid rgba(70,160,70,0.3); }
+        .audit-badge.warn { background: rgba(200,160,40,0.15); color: #da3; border: 1px solid rgba(200,160,40,0.3); }
+        .audit-badge.fail { background: rgba(200,60,60,0.15); color: #e66; border: 1px solid rgba(200,60,60,0.3); }
+        .audit-panel {
+            background: #1a1a1e;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-top: 10px;
+            font-size: 12px;
+            display: none;
+        }
+        .audit-panel.open { display: block; }
+        .audit-panel h4 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent);
+            margin: 0 0 8px;
+        }
+        .audit-section { margin-bottom: 10px; }
+        .audit-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .audit-finding {
+            display: flex;
+            gap: 6px;
+            padding: 2px 0;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .audit-finding .af-icon { flex-shrink: 0; width: 14px; text-align: center; }
+        .af-pass { color: #6c6; }
+        .af-warn { color: #da3; }
+        .af-fail { color: #e66; }
+        .af-info { color: #88f; }
     </style>
 </head>
 <body>
@@ -1163,6 +1275,500 @@ async function selectNPC(id) {
 }
 
 function dieStr(v) { return v > 0 ? 'd'+v : '—'; }
+function dieSteps(v) { return v > 0 ? (v - 4) / 2 : 0; } // d4=0, d6=1, d8=2, d10=3, d12=4
+
+// ============================================================
+// SWADE RULES ENGINE
+// ============================================================
+const SWADE = {
+    // Skill → linked attribute
+    skillLinks: {
+        'Athletics':'agility', 'Boating':'agility', 'Driving':'agility', 'Fighting':'agility',
+        'Piloting':'agility', 'Riding':'agility', 'Shooting':'agility', 'Stealth':'agility', 'Thievery':'agility',
+        'Academics':'smarts', 'Battle':'smarts', 'Common Knowledge':'smarts', 'Electronics':'smarts',
+        'Gambling':'smarts', 'Hacking':'smarts', 'Healing':'smarts', 'Language':'smarts',
+        'Notice':'smarts', 'Occult':'smarts', 'Repair':'smarts', 'Research':'smarts',
+        'Science':'smarts', 'Spellcasting':'smarts', 'Weird Science':'smarts', 'Taunt':'smarts',
+        'Faith':'spirit', 'Focus':'spirit', 'Intimidation':'spirit', 'Performance':'spirit',
+        'Persuasion':'spirit', 'Survival':'spirit',
+    },
+    coreSkills: ['Athletics', 'Common Knowledge', 'Notice', 'Persuasion', 'Stealth'],
+    attrNames: ['agility', 'smarts', 'spirit', 'strength', 'vigor'],
+
+    // Edge requirements: name → { rank, attrs:{attr:die}, skills:{skill:die}, edges:[], notes }
+    // Core SWADE edges
+    edgeReqs: {
+        // Background
+        'Alertness': {},
+        'Ambidextrous': { attrs: {agility: 8} },
+        'Arcane Background': {},
+        'Arcane Resistance': { attrs: {spirit: 8} },
+        'Attractive': { attrs: {vigor: 6} },
+        'Berserk': {},
+        'Brave': { attrs: {spirit: 6} },
+        'Brawny': { attrs: {strength: 6, vigor: 6} },
+        'Calculating': { attrs: {smarts: 8} },
+        'Charismatic': { attrs: {spirit: 8} },
+        'Elan': { attrs: {spirit: 8} },
+        'Fleet-Footed': { attrs: {agility: 6} },
+        'Linguist': { attrs: {smarts: 6} },
+        'Luck': {},
+        'Quick': { attrs: {agility: 8} },
+        'Rich': {},
+        // Combat
+        'Block': { rank: 'Seasoned', skills: {Fighting: 8} },
+        'Brawler': { attrs: {strength: 8, vigor: 8} },
+        'Bruiser': { rank: 'Seasoned', edges: ['Brawler'] },
+        'Combat Reflexes': { rank: 'Seasoned' },
+        'Counterattack': { rank: 'Seasoned', skills: {Fighting: 8} },
+        'Dead Shot': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'Dodge': { attrs: {agility: 8} },
+        'Double Tap': { skills: {Shooting: 6} },
+        'Extraction': { attrs: {agility: 8} },
+        'Feint': { skills: {Fighting: 8} },
+        'First Strike': { attrs: {agility: 8} },
+        'Free Runner': { attrs: {agility: 8}, skills: {Athletics: 6} },
+        'Frenzy': { rank: 'Seasoned', skills: {Fighting: 8} },
+        'Giant Killer': { rank: 'Seasoned' },
+        'Hard to Kill': { attrs: {spirit: 8} },
+        'Harder to Kill': { rank: 'Veteran', edges: ['Hard to Kill'] },
+        'Improvisational Fighter': { attrs: {smarts: 6} },
+        'Iron Jaw': { attrs: {vigor: 8} },
+        'Killer Instinct': { rank: 'Seasoned' },
+        'Level Headed': { rank: 'Seasoned', attrs: {smarts: 8} },
+        'Marksman': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'Martial Artist': { skills: {Fighting: 6} },
+        'Mighty Blow': { rank: 'Seasoned', skills: {Fighting: 8} },
+        'Nerves of Steel': { attrs: {vigor: 8} },
+        'No Mercy': { rank: 'Seasoned' },
+        'Rapid Fire': { rank: 'Seasoned', skills: {Shooting: 6} },
+        'Rock and Roll': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'Steady Hands': { attrs: {agility: 8} },
+        'Sweep': { attrs: {strength: 8}, skills: {Fighting: 8} },
+        'Trademark Weapon': { skills: {Fighting: 8} },
+        'Two-Fisted': { attrs: {agility: 8} },
+        'Two-Gun Kid': { attrs: {agility: 8} },
+        // Leadership
+        'Command': { attrs: {smarts: 6} },
+        'Command Presence': { rank: 'Seasoned', edges: ['Command'] },
+        'Fervor': { rank: 'Veteran', attrs: {spirit: 8}, edges: ['Command'] },
+        'Hold the Line!': { rank: 'Seasoned', attrs: {smarts: 8}, edges: ['Command'] },
+        'Inspire': { rank: 'Seasoned', edges: ['Command'] },
+        'Natural Leader': { rank: 'Seasoned', attrs: {spirit: 8}, edges: ['Command'] },
+        'Tactician': { rank: 'Seasoned', attrs: {smarts: 8}, edges: ['Command'] },
+        // Power
+        'New Powers': { edges: ['Arcane Background'] },
+        'Power Points': { edges: ['Arcane Background'] },
+        'Rapid Recharge': { rank: 'Seasoned', attrs: {spirit: 6}, edges: ['Arcane Background'] },
+        'Soul Drain': { rank: 'Seasoned', edges: ['Arcane Background'] },
+        // Professional
+        'Ace': { skills: {Driving: 8} },
+        'Acrobat': { attrs: {agility: 8}, skills: {Athletics: 8} },
+        'Champion': { attrs: {spirit: 8}, skills: {Fighting: 6}, edges: ['Arcane Background'] },
+        'Healer': { attrs: {spirit: 8} },
+        'Holy Warrior': { attrs: {spirit: 8}, edges: ['Arcane Background'] },
+        'Investigator': { attrs: {smarts: 8} },
+        'Jack-of-all-Trades': { attrs: {smarts: 10} },
+        'McGyver': { attrs: {smarts: 6}, skills: {Repair: 6} },
+        'Mentalist': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
+        'Scholar': { attrs: {smarts: 8} },
+        'Soldier': { attrs: {strength: 6, vigor: 6} },
+        'Thief': { attrs: {agility: 8}, skills: {Stealth: 6, Thievery: 6} },
+        'Wizard': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
+        'Woodsman': { attrs: {spirit: 6}, skills: {Survival: 8} },
+        // Social
+        'Bolster': { attrs: {spirit: 8} },
+        'Common Bond': { attrs: {spirit: 8} },
+        'Connections': {},
+        'Humiliate': { rank: 'Seasoned', skills: {Taunt: 8} },
+        'Menacing': { attrs: {spirit: 8} },
+        'Provoke': { skills: {Taunt: 6} },
+        'Rabble-Rouser': { rank: 'Seasoned', attrs: {spirit: 8} },
+        'Reliable': { attrs: {spirit: 8} },
+        'Retort': { skills: {Taunt: 6} },
+        'Streetwise': { attrs: {smarts: 6} },
+        'Strong Willed': { attrs: {spirit: 8} },
+        'Work the Room': { attrs: {spirit: 8} },
+        // Weird / Legendary omitted for brevity
+
+        // === TRIBUTE LANDS CUSTOM EDGES ===
+        // Ammaria
+        'Appraiser': { attrs: {smarts: 6}, skills: {Notice: 6} },
+        'Blackmarket Broker': { skills: {'Common Knowledge': 6, Persuasion: 6} },
+        'Guild Journeyman': { notes: 'Smarts d6+ or Agility d6+, relevant trade skill d6+' },
+        'Guildmaster': { rank: 'Seasoned', edges: ['Guild Journeyman'] },
+        'Moneylender': { rank: 'Seasoned', attrs: {smarts: 8}, skills: {Persuasion: 6} },
+        "Sailor's Edge": { skills: {Boating: 6, Athletics: 4} },
+        "Smuggler's Eye": { skills: {Notice: 6} },
+        'Patron': {},
+        'Halberd Guard': { skills: {Fighting: 6} },
+        'Halberd Master': { rank: 'Seasoned', edges: ['Halberd Guard'], skills: {Fighting: 8} },
+        'War Boar Rider': { rank: 'Seasoned', skills: {Riding: 8} },
+        'Repeating Crossbow Training': { skills: {Shooting: 6} },
+        'Repeating Crossbow Mastery': { rank: 'Seasoned', edges: ['Repeating Crossbow Training'], skills: {Shooting: 8} },
+        'Caravan Guard': { attrs: {vigor: 6}, skills: {Fighting: 6} },
+        'Canal Rat': { attrs: {agility: 6}, skills: {Athletics: 6} },
+        'Debt-Resistant': { attrs: {spirit: 6} },
+        'Guild Alchemist': { edges: ['Arcane Background'], attrs: {smarts: 6} },
+        // Saltlands
+        'Cutting Wit': { skills: {Taunt: 6} },
+        'No Fair Fights': { attrs: {agility: 8}, skills: {Fighting: 6} },
+        'Board and Storm': { attrs: {strength: 6}, skills: {Fighting: 6, Athletics: 6} },
+        'Reef Navigator': { skills: {Boating: 8} },
+        'Sea Legs': { attrs: {agility: 6} },
+        'Deadeye': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'Scrapper': { rank: 'Seasoned', skills: {Fighting: 8}, attrs: {vigor: 6} },
+        "Pirate's Eye": { skills: {Notice: 6} },
+        'Terrifying Reputation': { rank: 'Seasoned', skills: {Intimidation: 8} },
+        'Rigging Rat': { skills: {Athletics: 6} },
+        'Survivor': { attrs: {vigor: 6} },
+        'Sea Witch': { attrs: {spirit: 6}, edges: ['Arcane Background'] },
+        'Storm-Caller': { rank: 'Seasoned', edges: ['Sea Witch'] },
+        // Vinlands
+        'Waldl': { skills: {Stealth: 6, Survival: 6} },
+        'Thornguard Veteran': { skills: {Shooting: 6, Notice: 6} },
+        'Wall-Warden': { skills: {Shooting: 6, Notice: 6} },
+        'Ashwarden': { skills: {Survival: 6}, attrs: {smarts: 6} },
+        'Beast-Kin': { attrs: {spirit: 8} },
+        'Beast Bond': { attrs: {spirit: 8} },
+        'Beast Master': { attrs: {spirit: 8} },
+        "Factor's Eye": { attrs: {smarts: 6}, skills: {Notice: 6} },
+        'Rune-Carver': { attrs: {smarts: 6}, edges: ['Arcane Background'] },
+        'Clan Standing': {},
+        'Battle-Fame': { rank: 'Seasoned' },
+        'Ironback-Rider': { skills: {Riding: 6}, attrs: {vigor: 8} },
+    },
+
+    rankOrder: ['Novice', 'Seasoned', 'Veteran', 'Heroic', 'Legendary'],
+    rankMeetsMin(charRank, reqRank) {
+        if (!reqRank) return true;
+        return this.rankOrder.indexOf(charRank || 'Novice') >= this.rankOrder.indexOf(reqRank);
+    }
+};
+
+// ── FULL BUILD AUDIT ──
+function auditCharacter(n) {
+    const findings = [];
+    const F = (level, category, msg) => findings.push({level, category, msg});
+    const skills = n.skills || [];
+    const edges = (n.edge_items || []).map(e => e.name);
+    const edgesLegacy = edges.length ? edges : (n.edges || []);
+    const hindrances = n.hindrance_items || [];
+    // For legacy: parse severity from strings like "Code of Honor (Major — detail)"
+    const hindLegacy = hindrances.length ? hindrances : (n.hindrances || []).map(h => {
+        const str = typeof h === 'string' ? h : '';
+        const isMajor = str.includes('Major');
+        const isMinor = str.includes('Minor');
+        const name = str.replace(/\\s*\\(.*\\)/, '').trim();
+        return { name, severity: isMajor ? 'Major' : (isMinor ? 'Minor' : 'Minor') };
+    });
+    const rank = n.rank_guideline || 'Novice';
+    const isPregen = n.tier === 'Wild Card' || n.tier === 'Extra';
+
+    // ── 1. DERIVED STATS ──
+    const fSkill = skills.find(s => s.name === 'Fighting');
+    const fDie = fSkill ? fSkill.die : 0;
+    const expPace = 6;
+    const expParry = fDie > 0 ? 2 + Math.floor(fDie / 2) : 2;
+    const expToughBase = 2 + Math.floor(n.vigor / 2);
+    const expTough = expToughBase + (n.toughness_armor || 0);
+
+    // Check for edges/hindrances that modify pace
+    const hasFleet = edgesLegacy.some(e => typeof e === 'string' ? e.includes('Fleet') : false);
+    const hasSmall = hindLegacy.some(h => (h.name||h).toString().includes('Small'));
+    const hasBlock = edgesLegacy.some(e => typeof e === 'string' ? e.includes('Block') : false);
+    const hasBrawny = edgesLegacy.some(e => typeof e === 'string' ? e.includes('Brawny') : false);
+
+    if (n.pace !== expPace) {
+        if (hasFleet && n.pace === 8) F('info', 'derived', `Pace ${n.pace} — modified by Fleet-Footed`);
+        else F('warn', 'derived', `Pace ${n.pace} — expected ${expPace}. Edge or Hindrance modifier?`);
+    } else F('pass', 'derived', `Pace ${n.pace} ✓`);
+
+    if (n.parry !== expParry) {
+        const diff = n.parry - expParry;
+        if (hasBlock && diff === 1) F('info', 'derived', `Parry ${n.parry} — includes Block (+1)`);
+        else F('warn', 'derived', `Parry ${n.parry} — expected ${expParry} (2 + Fighting ${dieStr(fDie)}÷2). Shield or Edge modifier?`);
+    } else F('pass', 'derived', `Parry ${n.parry} = 2 + ${dieStr(fDie)}÷2 ✓`);
+
+    if (n.toughness !== expTough) {
+        if (hasBrawny && n.toughness === expTough + 1) F('info', 'derived', `Toughness ${n.toughness} — includes Brawny (+1 Size)`);
+        else F('warn', 'derived', `Toughness ${n.toughness} — expected ${expTough} (2 + ${dieStr(n.vigor)}÷2 + ${n.toughness_armor||0} armour)`);
+    } else F('pass', 'derived', `Toughness ${n.toughness}${n.toughness_armor ? ' ('+n.toughness_armor+')' : ''} ✓`);
+
+    // Check armour consistency
+    const totalArmProt = (n.armor || []).reduce((sum, a) => Math.max(sum, a.protection || 0), 0);
+    if (totalArmProt !== (n.toughness_armor || 0)) {
+        F('warn', 'derived', `Armour mismatch: best armour gives +${totalArmProt} but toughness_armor is ${n.toughness_armor||0}`);
+    }
+
+    // ── 2. ATTRIBUTE BUDGET (Novice pre-gens only) ──
+    if (rank === 'Novice' && n.agility > 0) {
+        const attrPoints = SWADE.attrNames.reduce((sum, a) => sum + dieSteps(n[a]), 0);
+        // Humans get 6 points (5 base + 1 ancestry)
+        // Hindrance points can buy extra attribute points (2 hindrance pts = 1 attr pt)
+        const majorCount = hindLegacy.filter(h => (h.severity||'') === 'Major').length;
+        const minorCount = hindLegacy.filter(h => (h.severity||'') === 'Minor').length;
+        const hindPts = (majorCount * 2) + (minorCount * 1);
+        const maxAttrFromHind = Math.floor(hindPts / 2); // can spend 2 hind pts for 1 attr pt
+        const baseAttrBudget = 6; // human
+
+        if (attrPoints <= baseAttrBudget) {
+            F('pass', 'attributes', `Attribute points: ${attrPoints}/${baseAttrBudget} ✓`);
+        } else if (attrPoints <= baseAttrBudget + maxAttrFromHind) {
+            const extra = attrPoints - baseAttrBudget;
+            F('pass', 'attributes', `Attribute points: ${attrPoints} (${baseAttrBudget} base + ${extra} from Hindrances) ✓`);
+        } else {
+            F('fail', 'attributes', `Attribute points: ${attrPoints} spent — budget is ${baseAttrBudget} base + up to ${maxAttrFromHind} from ${hindPts} Hindrance pts = ${baseAttrBudget + maxAttrFromHind} max`);
+        }
+
+        // ── 3. HINDRANCE LIMITS ──
+        if (majorCount > 2) F('fail', 'hindrances', `${majorCount} Major Hindrances — maximum is 2`);
+        if (hindPts > 4) F('fail', 'hindrances', `Hindrance points: ${hindPts} — maximum 4 (any combination)`);
+        else F('pass', 'hindrances', `Hindrance points: ${hindPts}/4 (${majorCount} Major, ${minorCount} Minor) ✓`);
+
+        // ── 4. SKILL BUDGET ──
+        let skillCost = 0;
+        const isCore = name => SWADE.coreSkills.includes(name);
+        skills.forEach(s => {
+            const linked = SWADE.skillLinks[s.name];
+            const linkedDie = linked ? (n[linked] || 4) : 4;
+            const steps = dieSteps(s.die);
+            if (isCore(s.name)) {
+                // Core skills start at d4 free — cost is only steps above d4
+                let cost = 0;
+                for (let d = 6; d <= s.die; d += 2) {
+                    cost += d > linkedDie ? 2 : 1;
+                }
+                skillCost += cost;
+            } else {
+                // Non-core: d4 costs 1, then each step
+                let cost = 1; // d4
+                for (let d = 6; d <= s.die; d += 2) {
+                    cost += d > linkedDie ? 2 : 1;
+                }
+                skillCost += cost;
+            }
+        });
+
+        // Hindrance points can also buy skill points (2 hind pts = 2 skill pts)
+        // But we don't know how they allocated, so check against max possible
+        const hindSkillPts = hindPts; // 2 pts → 2 skill pts, 4 pts → 4 skill pts (if all spent on skills)
+        const baseSkillBudget = 12;
+
+        // We can't know exact allocation, but we can flag if it's over the theoretical max
+        // Max is if ALL hindrance points go to skills and attributes
+        if (skillCost <= baseSkillBudget) {
+            F('pass', 'skills', `Skill points: ${skillCost}/${baseSkillBudget} ✓`);
+        } else if (skillCost <= baseSkillBudget + hindPts) {
+            const extra = skillCost - baseSkillBudget;
+            F('pass', 'skills', `Skill points: ${skillCost} (${baseSkillBudget} base + ${extra} likely from Hindrances) ✓`);
+        } else {
+            F('fail', 'skills', `Skill points: ${skillCost} spent — maximum possible is ${baseSkillBudget + hindPts} (12 base + ${hindPts} from Hindrances)`);
+        }
+
+        // ── 5. EDGE BUDGET ──
+        const edgeCount = edgesLegacy.length;
+        const freeEdges = 1;
+        const maxEdgesFromHind = Math.floor(hindPts / 2);
+        const maxEdges = freeEdges + maxEdgesFromHind;
+
+        // Also check: hindrance points spent on edges + attrs + skills can't exceed total hindrance pts
+        // This is a soft check since we can't know exact allocation
+        if (edgeCount <= maxEdges) {
+            F('pass', 'edges', `Edge count: ${edgeCount} (1 free + up to ${maxEdgesFromHind} from Hindrances) ✓`);
+        } else {
+            F('fail', 'edges', `Edge count: ${edgeCount} — max is ${maxEdges} (1 free + ${maxEdgesFromHind} from ${hindPts} Hindrance pts)`);
+        }
+
+        // ── 5b. COMBINED HINDRANCE SPEND CHECK ──
+        // Minimum hindrance points needed: attrs over 6 need (extra * 2), skills over 12 need extra, edges over 1 need (extra * 2)
+        const attrOverBase = Math.max(0, attrPoints - baseAttrBudget);
+        const skillOverBase = Math.max(0, skillCost - baseSkillBudget);
+        const edgeOverBase = Math.max(0, edgeCount - freeEdges);
+        const minHindPtsNeeded = (attrOverBase * 2) + skillOverBase + (edgeOverBase * 2);
+        if (minHindPtsNeeded > hindPts) {
+            F('fail', 'budget', `Hindrance budget overdrawn: need ${minHindPtsNeeded} pts for +${attrOverBase} attr, +${skillOverBase} skill, +${edgeOverBase} edges — only ${hindPts} available`);
+        } else if (minHindPtsNeeded > 0) {
+            F('pass', 'budget', `Hindrance allocation: ${minHindPtsNeeded}/${hindPts} pts used (${attrOverBase > 0 ? attrOverBase+' attr, ' : ''}${skillOverBase > 0 ? skillOverBase+' skill, ' : ''}${edgeOverBase > 0 ? edgeOverBase+' edges' : ''}) ✓`);
+        }
+    }
+
+    // ── 6. EDGE REQUIREMENTS ──
+    edgesLegacy.forEach(edgeName => {
+        const name = (typeof edgeName === 'string' ? edgeName : '').replace(/\\s*\\(.*\\)/, '').trim();
+        const req = SWADE.edgeReqs[name];
+        if (!req) {
+            // Unknown edge — might be custom, just note it
+            if (name && !name.includes('Arcane Background')) {
+                F('info', 'edge-reqs', `${name} — no requirement data (custom edge?)`);
+            }
+            return;
+        }
+        let met = true;
+        let reasons = [];
+
+        // Rank check
+        if (req.rank && !SWADE.rankMeetsMin(rank, req.rank)) {
+            met = false;
+            reasons.push(`requires ${req.rank} rank`);
+        }
+        // Attribute checks
+        if (req.attrs) {
+            for (const [attr, minDie] of Object.entries(req.attrs)) {
+                if ((n[attr] || 4) < minDie) {
+                    met = false;
+                    reasons.push(`needs ${attr.charAt(0).toUpperCase()+attr.slice(1)} d${minDie}+`);
+                }
+            }
+        }
+        // Skill checks
+        if (req.skills) {
+            for (const [skill, minDie] of Object.entries(req.skills)) {
+                const s = skills.find(sk => sk.name === skill);
+                if (!s || s.die < minDie) {
+                    met = false;
+                    reasons.push(`needs ${skill} d${minDie}+`);
+                }
+            }
+        }
+        // Prerequisite edge checks
+        if (req.edges) {
+            for (const preEdge of req.edges) {
+                if (!edgesLegacy.some(e => (typeof e === 'string' ? e : '').includes(preEdge))) {
+                    met = false;
+                    reasons.push(`requires ${preEdge} edge`);
+                }
+            }
+        }
+
+        if (met) {
+            F('pass', 'edge-reqs', `${name} — requirements met ✓`);
+        } else {
+            F('fail', 'edge-reqs', `${name} — UNMET: ${reasons.join(', ')}`);
+        }
+    });
+
+    // ── 7. SKILL LINKS (above-attribute costs noted) ──
+    skills.forEach(s => {
+        const linked = SWADE.skillLinks[s.name];
+        if (linked) {
+            const linkedDie = n[linked] || 4;
+            if (s.die > linkedDie) {
+                F('info', 'skills', `${s.name} ${dieStr(s.die)} exceeds linked ${linked} ${dieStr(linkedDie)} — costs 2pts/step above`);
+            }
+        }
+    });
+
+    return findings;
+}
+
+// ── AUDIT SUMMARY ──
+function auditSummary(findings) {
+    const fails = findings.filter(f => f.level === 'fail').length;
+    const warns = findings.filter(f => f.level === 'warn').length;
+    if (fails > 0) return { status: 'fail', label: `${fails} Error${fails>1?'s':''}`, icon: '✗' };
+    if (warns > 0) return { status: 'warn', label: `${warns} Warning${warns>1?'s':''}`, icon: '⚠' };
+    return { status: 'pass', label: 'Build Legal', icon: '✓' };
+}
+
+function renderAuditBadge(npcId, findings) {
+    const s = auditSummary(findings);
+    return `<span class="audit-badge ${s.status}" onclick="toggleAuditPanel(${npcId})" title="Click for full audit">${s.icon} ${s.label}</span>`;
+}
+
+function renderAuditPanel(npcId, findings) {
+    const cats = {};
+    findings.forEach(f => {
+        if (!cats[f.category]) cats[f.category] = [];
+        cats[f.category].push(f);
+    });
+    const catLabels = {
+        'derived': 'Derived Statistics',
+        'attributes': 'Attribute Budget',
+        'hindrances': 'Hindrance Limits',
+        'skills': 'Skill Budget',
+        'edges': 'Edge Budget',
+        'budget': 'Combined Hindrance Spend',
+        'edge-reqs': 'Edge Requirements',
+    };
+    const iconMap = { pass: '✓', warn: '⚠', fail: '✗', info: 'ℹ' };
+    const classMap = { pass: 'af-pass', warn: 'af-warn', fail: 'af-fail', info: 'af-info' };
+
+    let html = '<h4>Build Audit</h4>';
+    for (const [cat, items] of Object.entries(cats)) {
+        html += `<div class="audit-section"><div class="audit-section-title">${catLabels[cat]||cat}</div>`;
+        items.forEach(f => {
+            html += `<div class="audit-finding"><span class="af-icon ${classMap[f.level]}">${iconMap[f.level]}</span><span>${f.msg}</span></div>`;
+        });
+        html += '</div>';
+    }
+    return `<div class="audit-panel" id="auditPanel_${npcId}">${html}</div>`;
+}
+
+function toggleAuditPanel(npcId) {
+    const p = document.getElementById('auditPanel_' + npcId);
+    if (p) p.classList.toggle('open');
+}
+
+// ── POPOVER BUILDERS ──
+function buildPacePopover(n, fDie) {
+    const exp = 6;
+    const edges = (n.edge_items||[]).map(e=>e.name).concat(n.edges||[]);
+    const hasFleet = edges.some(e => (e||'').includes('Fleet'));
+    let html = `<div class="pop-title">Pace</div>`;
+    html += `<div class="pop-row"><span>Base (Human)</span><span class="pop-val">6</span></div>`;
+    if (hasFleet) html += `<div class="pop-row"><span>Fleet-Footed</span><span class="pop-val">+2</span></div>`;
+    html += `<div class="pop-divider"></div>`;
+    const ok = n.pace === exp || (hasFleet && n.pace === 8);
+    html += `<div class="pop-total"><span>Total</span><span class="pop-val ${ok?'pop-ok':'pop-err'}">${n.pace} ${ok?'✓':'✗'}</span></div>`;
+    if (!ok && !hasFleet) html += `<div class="pop-note">Edge or Hindrance modifier?</div>`;
+    return html;
+}
+
+function buildParryPopover(n, fDie) {
+    const edges = (n.edge_items||[]).map(e=>e.name).concat(n.edges||[]);
+    const hasBlock = edges.some(e => (e||'').includes('Block'));
+    // Check for shield in armor
+    const shield = (n.armor||[]).find(a => (a.name||'').toLowerCase().includes('shield'));
+    const shieldBonus = shield ? (shield.protection||1) : 0;
+    let exp = fDie > 0 ? 2 + Math.floor(fDie / 2) : 2;
+    let expWithMods = exp + (hasBlock ? 1 : 0) + shieldBonus;
+
+    let html = `<div class="pop-title">Parry</div>`;
+    html += `<div class="pop-row"><span>Base</span><span class="pop-val">2</span></div>`;
+    if (fDie > 0) {
+        html += `<div class="pop-row"><span>Fighting ${dieStr(fDie)} ÷ 2</span><span class="pop-val">+${Math.floor(fDie/2)}</span></div>`;
+    } else {
+        html += `<div class="pop-row"><span>No Fighting skill</span><span class="pop-val">+0</span></div>`;
+    }
+    if (hasBlock) html += `<div class="pop-row"><span>Block Edge</span><span class="pop-val">+1</span></div>`;
+    if (shieldBonus) html += `<div class="pop-row"><span>${shield.name}</span><span class="pop-val">+${shieldBonus}</span></div>`;
+    html += `<div class="pop-divider"></div>`;
+    const ok = n.parry === exp || n.parry === expWithMods;
+    html += `<div class="pop-total"><span>Total</span><span class="pop-val ${ok?'pop-ok':'pop-err'}">${n.parry} ${ok?'✓':'✗'}</span></div>`;
+    if (!ok) html += `<div class="pop-note">Expected ${expWithMods}. Shield or weapon modifier?</div>`;
+    return html;
+}
+
+function buildToughPopover(n) {
+    const edges = (n.edge_items||[]).map(e=>e.name).concat(n.edges||[]);
+    const hasBrawny = edges.some(e => (e||'').includes('Brawny'));
+    const vigorHalf = Math.floor(n.vigor / 2);
+    let exp = 2 + vigorHalf + (n.toughness_armor || 0) + (hasBrawny ? 1 : 0);
+
+    let html = `<div class="pop-title">Toughness</div>`;
+    html += `<div class="pop-row"><span>Base</span><span class="pop-val">2</span></div>`;
+    html += `<div class="pop-row"><span>Vigor ${dieStr(n.vigor)} ÷ 2</span><span class="pop-val">+${vigorHalf}</span></div>`;
+    if (hasBrawny) html += `<div class="pop-row"><span>Brawny (+1 Size)</span><span class="pop-val">+1</span></div>`;
+    if (n.toughness_armor) {
+        const bestArmor = (n.armor||[]).reduce((best, a) => (a.protection||0) > (best.protection||0) ? a : best, {name:'Armour',protection:n.toughness_armor});
+        html += `<div class="pop-row"><span>${bestArmor.name || 'Armour'} (+${bestArmor.protection||n.toughness_armor})</span><span class="pop-val">+${n.toughness_armor}</span></div>`;
+    }
+    html += `<div class="pop-divider"></div>`;
+    const ok = n.toughness === exp || n.toughness === (2 + vigorHalf + (n.toughness_armor||0));
+    html += `<div class="pop-total"><span>Total</span><span class="pop-val ${ok?'pop-ok':'pop-err'}">${n.toughness}${n.toughness_armor ? ' ('+n.toughness_armor+')' : ''} ${ok?'✓':'✗'}</span></div>`;
+    return html;
+}
 
 function renderNPCDetail(n) {
     const el = document.getElementById('mainContent');
@@ -1190,9 +1796,16 @@ function renderNPCDetail(n) {
         const paceColour = paceOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
         const parryColour = parryOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
         const toughColour = toughOk ? 'var(--success, #4a4)' : 'var(--danger, #c44)';
-        const paceTip = paceOk ? 'Base 6 ✓' : `Expected ${expectedPace} (base 6) — edge/hindrance?`;
-        const parryTip = parryOk ? `2 + Fighting ${dieStr(fightingDie)}/2 = ${expectedParry} ✓` : `Expected ${expectedParry} (2 + ${fightingDie > 0 ? dieStr(fightingDie)+'/2' : 'no Fighting'})`;
-        const toughTip = toughOk ? `2 + Vigor ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''} = ${expectedToughness} ✓` : `Expected ${expectedToughness} (2 + ${dieStr(n.vigor)}/2${n.toughness_armor ? ' + '+n.toughness_armor+' armour' : ''})`;
+
+        // Build popovers
+        const pacePop = buildPacePopover(n, fightingDie);
+        const parryPop = buildParryPopover(n, fightingDie);
+        const toughPop = buildToughPopover(n);
+
+        // Build audit
+        const auditFindings = auditCharacter(n);
+        const auditBadge = renderAuditBadge(n.id, auditFindings);
+        const auditPanel = renderAuditPanel(n.id, auditFindings);
         const skills = (n.skills||[]).map(s => `${s.name} ${dieStr(s.die)}`).join(', ');
         const hindrances = (n.hindrance_items||[]).length ?
             `<div class="stat-section"><span class="stat-section-label">Hindrances</span><div class="stat-val">${n.hindrance_items.map(h => h.severity === 'Major' ? `<strong>${h.name}</strong> (Major${h.notes ? ', '+h.notes : ''})` : `${h.name}${h.notes ? ' ('+h.notes+')' : ''}`).join(', ')}</div></div>` :
@@ -1221,12 +1834,14 @@ function renderNPCDetail(n) {
                     <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${safeName}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
-                    <div class="derived-item" title="${paceTip}"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div></div>
-                    <div class="derived-item" title="${parryTip}"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div></div>
-                    <div class="derived-item" title="${toughTip}"><div class="derived-num" style="color:${toughColour}">${tough}</div><div class="derived-label">Toughness</div></div>
+                    <div class="derived-item"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
+                    <div class="derived-item"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div><div class="derived-popover">${parryPop}</div></div>
+                    <div class="derived-item"><div class="derived-num" style="color:${toughColour}">${tough}</div><div class="derived-label">Toughness</div><div class="derived-popover">${toughPop}</div></div>
                     ${bennies}
+                    <div style="margin-left:auto;align-self:center">${auditBadge}</div>
                 </div>
                 ${hindrances}${edges}${powers}${specials}
+                ${auditPanel}
             </div>`;
     } else {
         statsPanel = `<div class="stat-block-panel"><h3>${n.name} — ${tierText}</h3><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="openEditModal(${n.id})">Edit NPC</button></div></div>`;
