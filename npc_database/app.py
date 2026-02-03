@@ -471,7 +471,7 @@ HTML_TEMPLATE = '''
             height: calc(100vh - 180px);
         }
         .col-stats {
-            width: 380px;
+            width: 400px;
             min-width: 200px;
             flex-shrink: 0;
             overflow-y: auto;
@@ -488,7 +488,7 @@ HTML_TEMPLATE = '''
             position: relative;
         }
         .col-narrative {
-            width: 320px;
+            width: 400px;
             min-width: 200px;
             flex-shrink: 0;
             overflow-y: auto;
