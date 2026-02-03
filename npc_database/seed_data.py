@@ -336,6 +336,67 @@ def seed_ammaria_npcs():
             'weapons': [],
             'armor': []
         },
+        
+        # --------------------------------------------------
+        # RENNA ASHVEIL - Debt-Slave Gladiator
+        # --------------------------------------------------
+        {
+            'name': 'Renna Ashveil',
+            'title': 'Debt-Slave Gladiator',
+            'region': 'Ammaria',
+            'tier': 'Wild Card',
+            'archetype': 'combat',
+            'rank_guideline': 'Novice',
+            'quote': 'Five years contracted. Four hundred seventeen days remain.',
+            'description': "Sold herself into term slavery to discharge family debts. Assigned gladiatorial training for her master's profit.",
+            'background': 'Shockingly skilled fighter who counts days toward freedom obsessively. Saves every copper toward early contract purchase.',
+            'motivation': 'Survive her contract and buy her freedom early.',
+            'secret': "Her master has no intention of honouring the contract's end date. She doesn't know this yet.",
+            'agility': 10, 'smarts': 4, 'spirit': 6, 'strength': 8, 'vigor': 4,
+            'pace': 6, 'parry': 7, 'toughness': 4, 'toughness_armor': 0,
+            'bennies': 3,
+            'edges_json': '["Quick", "Combat Reflexes", "First Strike"]',
+            'hindrances_json': '["Obligation (Major \u2014 debt contract)", "Poverty (Minor)", "Vengeful (Minor)"]',
+            'gear_json': '["Gladiatorial leathers (+1)", "Gladius (Str+d6)", "Net", "Ammarian steel dagger (Str+d4, AP 1)", "\u20a15 hidden savings"]',
+            'tactics': "Explosive and aggressive. Uses Quick to act first, First Strike to punish approach, then relentless Fighting d10 attacks. Fights like someone with nothing to lose.",
+            'stat_block_complete': 1,
+            'narrative_complete': 1,
+            'fg_export_ready': 0,
+            'source_document': '201_Ammaria',
+            'skills': {
+                'Athletics': 10, 'Common Knowledge': 4, 'Fighting': 10,
+                'Intimidation': 6, 'Notice': 4, 'Persuasion': 4,
+                'Stealth': 4, 'Survival': 6
+            },
+            'weapons': [
+                {
+                    'name': 'Gladius',
+                    'damage_str': 'Str+d6',
+                    'damagedice': 'd8+d6',
+                    'ap': 0,
+                    'trait_type': 'Melee',
+                    'reach': 0,
+                    'notes': None
+                },
+                {
+                    'name': 'Ammarian Steel Dagger',
+                    'damage_str': 'Str+d4',
+                    'damagedice': 'd8+d4',
+                    'ap': 1,
+                    'trait_type': 'Melee',
+                    'reach': 0,
+                    'notes': 'AP 1'
+                }
+            ],
+            'armor': [
+                {
+                    'name': 'Gladiatorial Leathers',
+                    'protection': 1,
+                    'area_protected': 'Torso, Arms',
+                    'notes': None
+                }
+            ]
+        },
     ]
     
     # ========================================
@@ -379,6 +440,74 @@ def seed_ammaria_npcs():
     
     all_npcs = pregens + contacts
     
+    # ========================================
+    # SALTLANDS PRE-GENS (202_Saltlands)
+    # ========================================
+    
+    saltlands_pregens = [
+        # --------------------------------------------------
+        # MARA "REEFBANE" SALTHEART - Corsair Captain
+        # --------------------------------------------------
+        {
+            'name': 'Mara "Reefbane" Saltheart',
+            'title': 'Corsair Captain',
+            'region': 'Saltlands',
+            'tier': 'Wild Card',
+            'archetype': 'maritime',
+            'rank_guideline': 'Novice',
+            'quote': "The reef takes what the reef wants. I just make sure it wants what I'm selling.",
+            'description': 'Born to the reefs and raised on deck. Captains the Gull\'s Spite, a fast cutter that runs the shallows where heavier vessels dare not follow.',
+            'background': 'Rose through corsair ranks on skill rather than cruelty. Commands loyalty through competence and fair shares.',
+            'motivation': 'Command her own fleet and answer to no harbour lord.',
+            'secret': 'Knows the location of a pre-Shattering wreck in the deep reefs. Has told no one.',
+            'agility': 8, 'smarts': 6, 'spirit': 8, 'strength': 6, 'vigor': 6,
+            'pace': 6, 'parry': 6, 'toughness': 6, 'toughness_armor': 1,
+            'bennies': 3,
+            'edges_json': '["Sailor\'s Edge", "Command"]',
+            'hindrances_json': '["Loyal (Major \u2014 crew)", "Stubborn (Minor)", "Wanted (Minor \u2014 Glasryan bounty)"]',
+            'gear_json': '["Leather armour (+1)", "Cutlass (Str+d6)", "Boarding axe (Str+d6)", "Spyglass", "\u20a140"]',
+            'tactics': 'Fights from the deck of her ship whenever possible. Uses terrain and crew to create advantage. Will not abandon her crew.',
+            'stat_block_complete': 1,
+            'narrative_complete': 0,
+            'fg_export_ready': 0,
+            'source_document': '202_Saltlands',
+            'skills': {
+                'Athletics': 6, 'Boating': 8, 'Fighting': 8,
+                'Intimidation': 6, 'Notice': 6, 'Shooting': 6, 'Stealth': 4
+            },
+            'weapons': [
+                {
+                    'name': 'Cutlass',
+                    'damage_str': 'Str+d6',
+                    'damagedice': 'd6+d6',
+                    'ap': 0,
+                    'trait_type': 'Melee',
+                    'reach': 0,
+                    'notes': None
+                },
+                {
+                    'name': 'Boarding Axe',
+                    'damage_str': 'Str+d6',
+                    'damagedice': 'd6+d6',
+                    'ap': 0,
+                    'trait_type': 'Melee',
+                    'reach': 0,
+                    'notes': None
+                }
+            ],
+            'armor': [
+                {
+                    'name': 'Leather Armour',
+                    'protection': 1,
+                    'area_protected': 'Torso',
+                    'notes': None
+                }
+            ]
+        },
+    ]
+    
+    all_npcs = all_npcs + saltlands_pregens
+    
     for npc_data in all_npcs:
         npc_id = add_npc_from_dict(npc_data)
         print(f"  ✓ #{npc_id}: {npc_data['name']} ({npc_data['region']}, {npc_data['tier']})")
@@ -398,6 +527,7 @@ def seed_org_links():
         ('"Shadows"', 'Night\'s Whisper', 'Operative'),
         ('Viktor "Silvertongue" Crane', 'Moonstar Consortium', 'Factor'),
         ('Tam "Three-Coins" Merrik', 'City Watch', 'Informant'),
+        ('Mara "Reefbane" Saltheart', 'Crimson Fleet', 'Captain'),
     ]
     
     for npc_name, org_name, role in links:
@@ -429,6 +559,8 @@ def seed_appearances():
         ('"Shadows"', 'Ammaria Core Module', 'Pre-gen PC'),
         ('Viktor "Silvertongue" Crane', 'Ammaria Core Module', 'Pre-gen PC'),
         ('Tam "Three-Coins" Merrik', 'Ammaria Core Module', 'NPC Contact'),
+        ('Renna Ashveil', 'Ammaria Core Module', 'Pre-gen PC'),
+        ('Mara "Reefbane" Saltheart', 'Saltlands Core Module', 'Pre-gen PC'),
     ]
     
     for npc_name, product, role in appearances:
