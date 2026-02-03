@@ -834,7 +834,7 @@ HTML_TEMPLATE = '''
             border-radius: 6px;
             padding: 10px 14px;
             min-width: 220px;
-            z-index: 100;
+            z-index: 9999;
             box-shadow: 0 4px 16px rgba(0,0,0,0.5);
             font-size: 12px;
             white-space: nowrap;
