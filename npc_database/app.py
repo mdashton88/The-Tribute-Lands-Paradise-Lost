@@ -372,9 +372,13 @@ HTML_TEMPLATE = '''
 
         /* --- NPC DETAIL VIEW --- */
         .npc-header {
-            margin-bottom: 16px;
-            padding-bottom: 12px;
+            margin-bottom: 0;
+            padding: 12px 0;
             border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-main);
+            z-index: 8;
         }
         .npc-header h2 {
             font-size: 22px;
@@ -389,10 +393,14 @@ HTML_TEMPLATE = '''
         .npc-quote {
             font-style: italic;
             color: var(--accent);
-            margin: 12px 0;
-            padding-left: 12px;
+            margin: 0;
+            padding: 8px 0 8px 12px;
             border-left: 2px solid var(--accent-dim);
             font-size: 14px;
+            position: sticky;
+            top: 60px;
+            background: var(--bg-main);
+            z-index: 7;
         }
         .npc-description, .npc-background {
             margin-bottom: 10px;
@@ -475,8 +483,8 @@ HTML_TEMPLATE = '''
         .detail-columns {
             display: flex;
             gap: 0;
-            margin-top: 14px;
-            height: calc(100vh - 180px);
+            margin-top: 10px;
+            height: calc(100vh - 220px);
         }
         .col-stats {
             width: 400px;
