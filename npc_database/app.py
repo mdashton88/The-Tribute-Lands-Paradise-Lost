@@ -1509,7 +1509,7 @@ function auditCharacter(n) {
         const majorCount = hindLegacy.filter(h => (h.severity||'') === 'Major').length;
         const minorCount = hindLegacy.filter(h => (h.severity||'') === 'Minor').length;
         const hindPts = (majorCount * 2) + (minorCount * 1);
-        const maxAttrFromHind = Math.floor(hindPts / 2); // can spend 2 hind pts for 1 attr pt
+        const maxAttrFromHind = Math.floor(effectiveHindPts / 2); // 2 hind pts = 1 attribute die step
         const baseAttrBudget = 6; // human
 
         if (attrPoints <= baseAttrBudget) {
@@ -1518,13 +1518,16 @@ function auditCharacter(n) {
             const extra = attrPoints - baseAttrBudget;
             F('pass', 'attributes', `Attribute points: ${attrPoints} (${baseAttrBudget} base + ${extra} from Hindrances) ✓`);
         } else {
-            F('fail', 'attributes', `Attribute points: ${attrPoints} spent — budget is ${baseAttrBudget} base + up to ${maxAttrFromHind} from ${hindPts} Hindrance pts = ${baseAttrBudget + maxAttrFromHind} max`);
+            F('fail', 'attributes', `Attribute points: ${attrPoints} spent — budget is ${baseAttrBudget} base + up to ${maxAttrFromHind} from ${effectiveHindPts} Hindrance pts = ${baseAttrBudget + maxAttrFromHind} max`);
         }
 
         // ── 3. HINDRANCE LIMITS ──
-        if (majorCount > 2) F('fail', 'hindrances', `${majorCount} Major Hindrances — maximum is 2`);
-        if (hindPts > 4) F('fail', 'hindrances', `Hindrance points: ${hindPts} — maximum 4 (any combination)`);
-        else F('pass', 'hindrances', `Hindrance points: ${hindPts}/4 (${majorCount} Major, ${minorCount} Minor) ✓`);
+        // Core rules: any combination up to 4 points benefit. You CAN take more but benefit caps at 4.
+        const effectiveHindPts = Math.min(hindPts, 4);
+        if (hindPts > 4) {
+            F('info', 'hindrances', `${hindPts} Hindrance points taken — benefit capped at 4 (${hindPts - 4} pts wasted)`);
+        }
+        F('pass', 'hindrances', `Hindrance points: ${effectiveHindPts}/4 effective (${majorCount} Major, ${minorCount} Minor) ✓`);
 
         // ── 4. SKILL BUDGET ──
         let skillCost = 0;
@@ -1550,46 +1553,42 @@ function auditCharacter(n) {
             }
         });
 
-        // Hindrance points can also buy skill points (2 hind pts = 2 skill pts)
-        // But we don't know how they allocated, so check against max possible
-        const hindSkillPts = hindPts; // 2 pts → 2 skill pts, 4 pts → 4 skill pts (if all spent on skills)
+        // Hindrance points buy skill points at 1:1 (1 hindrance pt = 1 skill pt)
+        // Benefit capped at 4 regardless of hindrances taken
         const baseSkillBudget = 12;
 
-        // We can't know exact allocation, but we can flag if it's over the theoretical max
-        // Max is if ALL hindrance points go to skills and attributes
         if (skillCost <= baseSkillBudget) {
             F('pass', 'skills', `Skill points: ${skillCost}/${baseSkillBudget} ✓`);
-        } else if (skillCost <= baseSkillBudget + hindPts) {
+        } else if (skillCost <= baseSkillBudget + effectiveHindPts) {
             const extra = skillCost - baseSkillBudget;
-            F('pass', 'skills', `Skill points: ${skillCost} (${baseSkillBudget} base + ${extra} likely from Hindrances) ✓`);
+            F('pass', 'skills', `Skill points: ${skillCost} (${baseSkillBudget} base + ${extra} from Hindrances at 1pt each) ✓`);
         } else {
-            F('fail', 'skills', `Skill points: ${skillCost} spent — maximum possible is ${baseSkillBudget + hindPts} (12 base + ${hindPts} from Hindrances)`);
+            F('fail', 'skills', `Skill points: ${skillCost} spent — maximum possible is ${baseSkillBudget + effectiveHindPts} (12 base + ${effectiveHindPts} from Hindrances)`);
         }
 
         // ── 5. EDGE BUDGET ──
+        // Edges cost 2 hindrance points each
         const edgeCount = edgesLegacy.length;
         const freeEdges = 1;
-        const maxEdgesFromHind = Math.floor(hindPts / 2);
+        const maxEdgesFromHind = Math.floor(effectiveHindPts / 2);
         const maxEdges = freeEdges + maxEdgesFromHind;
 
-        // Also check: hindrance points spent on edges + attrs + skills can't exceed total hindrance pts
-        // This is a soft check since we can't know exact allocation
         if (edgeCount <= maxEdges) {
-            F('pass', 'edges', `Edge count: ${edgeCount} (1 free + up to ${maxEdgesFromHind} from Hindrances) ✓`);
+            F('pass', 'edges', `Edge count: ${edgeCount} (1 free + up to ${maxEdgesFromHind} from Hindrances at 2pts each) ✓`);
         } else {
-            F('fail', 'edges', `Edge count: ${edgeCount} — max is ${maxEdges} (1 free + ${maxEdgesFromHind} from ${hindPts} Hindrance pts)`);
+            F('fail', 'edges', `Edge count: ${edgeCount} — max is ${maxEdges} (1 free + ${maxEdgesFromHind} from ${effectiveHindPts} Hindrance pts at 2pts each)`);
         }
 
         // ── 5b. COMBINED HINDRANCE SPEND CHECK ──
-        // Minimum hindrance points needed: attrs over 6 need (extra * 2), skills over 12 need extra, edges over 1 need (extra * 2)
+        // Core rules: 2pts = 1 attribute die or 1 Edge; 1pt = 1 skill point or starting funds
         const attrOverBase = Math.max(0, attrPoints - baseAttrBudget);
         const skillOverBase = Math.max(0, skillCost - baseSkillBudget);
         const edgeOverBase = Math.max(0, edgeCount - freeEdges);
         const minHindPtsNeeded = (attrOverBase * 2) + skillOverBase + (edgeOverBase * 2);
-        if (minHindPtsNeeded > hindPts) {
-            F('fail', 'budget', `Hindrance budget overdrawn: need ${minHindPtsNeeded} pts for +${attrOverBase} attr, +${skillOverBase} skill, +${edgeOverBase} edges — only ${hindPts} available`);
+        if (minHindPtsNeeded > effectiveHindPts) {
+            F('fail', 'budget', `Hindrance budget overdrawn: need ${minHindPtsNeeded} pts for +${attrOverBase} attr (×2), +${skillOverBase} skill (×1), +${edgeOverBase} edges (×2) — only ${effectiveHindPts} available`);
         } else if (minHindPtsNeeded > 0) {
-            F('pass', 'budget', `Hindrance allocation: ${minHindPtsNeeded}/${hindPts} pts used (${attrOverBase > 0 ? attrOverBase+' attr, ' : ''}${skillOverBase > 0 ? skillOverBase+' skill, ' : ''}${edgeOverBase > 0 ? edgeOverBase+' edges' : ''}) ✓`);
+            F('pass', 'budget', `Hindrance allocation: ${minHindPtsNeeded}/${effectiveHindPts} pts used (${attrOverBase > 0 ? attrOverBase+' attr (×2), ' : ''}${skillOverBase > 0 ? skillOverBase+' skill (×1), ' : ''}${edgeOverBase > 0 ? edgeOverBase+' edges (×2)' : ''}) ✓`);
         }
     }
 
