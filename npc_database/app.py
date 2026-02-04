@@ -1924,8 +1924,8 @@ function renderNPCDetail(n) {
     const wcLabel = n.tier === 'Wild Card' ? ' ★' : '';
     const tierText = n.tier === 'Wild Card' ? 'Wild Card' : n.tier;
     const titleLine = n.title ? `<div class="npc-title-line">${n.title}</div>` : '';
-    const quote = n.quote ? `<div class="npc-quote" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer">"${n.quote}"</div>` : `<div class="section" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer"><h3>Quote ✎</h3><div class="section-content" style="color:var(--text-dim)">No quote set</div></div>`;
     const safeName = n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;");
+    const quote = n.quote ? `<div class="npc-quote" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer">"${n.quote}"</div>` : `<div class="section" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer"><h3>Quote ✎</h3><div class="section-content" style="color:var(--text-dim)">No quote set</div></div>`;
 
     // ── COLUMN 2: STAT BLOCK ──
     let statsPanel = '';
