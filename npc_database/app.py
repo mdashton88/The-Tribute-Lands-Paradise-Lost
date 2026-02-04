@@ -629,8 +629,8 @@ HTML_TEMPLATE = '''
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
+            margin-bottom: 14px;
+            padding-bottom: 10px;
             border-bottom: 1px solid var(--border);
         }
         .workspace-header h3 {
@@ -639,6 +639,13 @@ HTML_TEMPLATE = '''
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+        .workspace-header + .form-row,
+        .workspace-header + .form-group,
+        .workspace-header + div { margin-top: 0; }
+        .ws-section { margin-bottom: 16px; }
+        .ws-section h4 { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+        .data-table { width: 100%; margin-bottom: 10px; }
+        .data-table th, .data-table td { padding: 5px 8px; font-size: 12px; }
         .panel-clickable h3 { cursor: pointer; }
         .panel-clickable h3:hover { color: var(--text-bright); }
 
@@ -709,6 +716,28 @@ HTML_TEMPLATE = '''
         }
         .stat-block-panel .stat-section {
             margin-bottom: 8px;
+        }
+        .stat-block-panel .clickable-section {
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+            cursor: pointer;
+        }
+        .stat-block-panel .clickable-section:first-of-type {
+            padding-top: 0;
+        }
+        .stat-block-panel .clickable-section:hover {
+            background: rgba(255,255,255,0.02);
+        }
+        .stat-block-panel .clickable-section h3 {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+            cursor: pointer;
+        }
+        .stat-block-panel .clickable-section h3:hover {
+            color: var(--accent);
         }
         .stat-block-panel .stat-section-label {
             font-size: 10px;
@@ -1942,8 +1971,8 @@ function renderNPCDetail(n) {
                     <span class="stat-block-tier">${tierText}${wcLabel}</span>
                     ${auditBadge}
                 </div>
-                <div class="weapons-panel panel-clickable"><h3 onclick="toggleWorkspace('attributes',${n.id},'${safeName}')">Attributes ✎</h3><div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div></div>
-                <div class="weapons-panel panel-clickable"><h3 onclick="toggleWorkspace('skills',${n.id},'${safeName}')">Skills ✎</h3><div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'}</div></div>
+                <div class="clickable-section" onclick="toggleWorkspace('attributes',${n.id},'${safeName}')"><h3>Attributes ✎</h3><div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div></div>
+                <div class="clickable-section" onclick="toggleWorkspace('skills',${n.id},'${safeName}')"><h3>Skills ✎</h3><div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'}</div></div>
                 <div class="derived-row">
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div><div class="derived-popover">${parryPop}</div></div>
@@ -2299,7 +2328,7 @@ function toggleWorkspace(type, npcId, name) {
 }
 
 function renderEditWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Edit — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Edit</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="wsEditForm">Loading...</div>`;
 }
 
@@ -2364,7 +2393,7 @@ async function loadEditWS(npcId) {
 }
 
 function renderStatblockWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Stat Block — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Stat Block</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="wsExportContent">Loading...</div>`;
 }
 
@@ -2414,12 +2443,12 @@ function copyStatblockMd() {
 }
 
 function renderFgxmlWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Fantasy Grounds XML — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Fantasy Grounds XML</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="wsExportContent">Loading...</div>`;
 }
 
 function renderSkillsWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Skills — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Skills</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="skillsList"></div>
         <div class="form-row" style="margin-top:10px">
             <div class="form-group"><label>Skill Name</label><input id="newSkillName" placeholder="Fighting"></div>
@@ -2439,8 +2468,8 @@ function renderAttributesWS(npcId, name) {
             '<option value="'+d+'"'+(d===(val||0)?' selected':'')+'>'+( d===0 ? '—' : 'd'+d)+'</option>'
         ).join('') + '</select>';
     }
-    return '<div class="workspace-header"><h3>Attributes &amp; Derived — '+name+'</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>'
-        + '<div style="margin-bottom:12px"><h4 style="color:var(--accent);margin-bottom:8px">Attributes</h4>'
+    return '<div class="workspace-header"><h3>Attributes &amp; Derived</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>'
+        + '<div class="ws-section"><h4>Attributes</h4>'
         + '<div class="form-row">'
         + '<div class="form-group"><label>Agility</label>'+mkSel('agility',n.agility)+'</div>'
         + '<div class="form-group"><label>Smarts</label>'+mkSel('smarts',n.smarts)+'</div>'
@@ -2448,7 +2477,7 @@ function renderAttributesWS(npcId, name) {
         + '<div class="form-group"><label>Strength</label>'+mkSel('strength',n.strength)+'</div>'
         + '<div class="form-group"><label>Vigor</label>'+mkSel('vigor',n.vigor)+'</div>'
         + '</div></div>'
-        + '<div style="margin-bottom:12px"><h4 style="color:var(--accent);margin-bottom:8px">Derived Stats</h4>'
+        + '<div class="ws-section"><h4>Derived Stats</h4>'
         + '<div class="form-row">'
         + '<div class="form-group"><label>Pace</label><input id="attrWS_pace" type="number" value="'+(n.pace||6)+'"></div>'
         + '<div class="form-group"><label>Parry</label><input id="attrWS_parry" type="number" value="'+(n.parry||2)+'"></div>'
@@ -2481,7 +2510,7 @@ async function loadFgxmlWS(npcId) {
 }
 
 function renderWeaponsWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Weapons — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Weapons</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="weaponsList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD WEAPON</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
@@ -2499,7 +2528,7 @@ function renderWeaponsWS(npcId, name) {
         <div style="margin-top:8px"><button class="btn primary" onclick="addWeapon()">Add Weapon</button></div>`;
 }
 function renderArmorWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Armour — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Armour</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="armorList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ARMOUR</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
@@ -2517,7 +2546,7 @@ function renderArmorWS(npcId, name) {
         <div style="margin-top:8px"><button class="btn primary" onclick="addArmor()">Add Armour</button></div>`;
 }
 function renderGearWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Gear — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Gear</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="gearList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD ITEM</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
@@ -2534,7 +2563,7 @@ function renderGearWS(npcId, name) {
         <div style="margin-top:8px"><button class="btn primary" onclick="addGear()">Add Item</button></div>`;
 }
 function renderHindrancesWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Hindrances — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Hindrances</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="hindrancesList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD HINDRANCE</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
@@ -2551,7 +2580,7 @@ function renderHindrancesWS(npcId, name) {
         <div style="margin-top:8px"><button class="btn primary" onclick="addHindrance()">Add Hindrance</button></div>`;
 }
 function renderEdgesWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Edges — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Edges</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="edgesList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD EDGE</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
@@ -2568,7 +2597,7 @@ function renderEdgesWS(npcId, name) {
         <div style="margin-top:8px"><button class="btn primary" onclick="addEdge()">Add Edge</button></div>`;
 }
 function renderPowersWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Powers — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    return `<div class="workspace-header"><h3>Powers</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="powersList"></div>
         <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD POWER</h4>
         <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
