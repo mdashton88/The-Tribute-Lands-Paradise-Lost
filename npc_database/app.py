@@ -540,8 +540,24 @@ HTML_TEMPLATE = '''
             width: 400px;
             min-width: 200px;
             flex-shrink: 0;
-            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
             position: relative;
+        }
+        .col-stats-scroll {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .actions-bar-fixed {
+            flex-shrink: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px 16px;
+            margin-top: 6px;
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
         }
         .col-workspace {
             flex: 1;
@@ -1990,7 +2006,7 @@ function renderNPCDetail(n) {
 
     // Action buttons + production status
     const statusHtml = `
-        <div class="actions-bar">
+        <div class="actions-bar-fixed">
             <div style="width:100%;display:flex;gap:12px;margin-bottom:4px">
                 <label style="font-size:11px;cursor:pointer"><input type="checkbox" ${n.stat_block_complete?'checked':''} onchange="toggleStatus(${n.id},'stat_block_complete',this.checked)"> Stats</label>
                 <label style="font-size:11px;cursor:pointer"><input type="checkbox" ${n.narrative_complete?'checked':''} onchange="toggleStatus(${n.id},'narrative_complete',this.checked)"> Narrative</label>
@@ -2057,6 +2073,7 @@ function renderNPCDetail(n) {
         <div class="detail-columns" id="detailColumns">
             <div class="col-stats" id="colStats">
                 <div class="col-gauge" id="gaugeStats"></div>
+                <div class="col-stats-scroll">
                 ${statsPanel}
                 <div class="summary-grid">
                 ${hindrancesPanel}
@@ -2066,8 +2083,9 @@ function renderNPCDetail(n) {
                 ${powersPanel}
                 ${gearPanel}
                 </div>
-                ${statusHtml}
                 <div id="exportOutput"></div>
+                </div>
+                ${statusHtml}
             </div>
             <div class="col-resizer" id="resizer1"></div>
             <div class="col-workspace" id="workspacePanel">
