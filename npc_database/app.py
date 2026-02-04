@@ -498,6 +498,10 @@ HTML_TEMPLATE = '''
             line-height: 1.6;
         }
         .section-content p { margin-bottom: 4px; }
+        .section[onclick] { cursor: pointer; border-radius: 4px; padding: 4px 8px; margin-left: -8px; margin-right: -8px; }
+        .section[onclick]:hover { background: rgba(255,255,255,0.03); }
+        .section[onclick] h3::after { content: ''; }
+        .npc-quote[onclick]:hover { background: rgba(255,255,255,0.03); border-radius: 4px; }
 
         /* --- TABLES --- */
         table.data-table {
@@ -1918,7 +1922,7 @@ function renderNPCDetail(n) {
     const wcLabel = n.tier === 'Wild Card' ? ' ★' : '';
     const tierText = n.tier === 'Wild Card' ? 'Wild Card' : n.tier;
     const titleLine = n.title ? `<div class="npc-title-line">${n.title}</div>` : '';
-    const quote = n.quote ? `<div class="npc-quote">"${n.quote}"</div>` : '';
+    const quote = n.quote ? `<div class="npc-quote" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer">"${n.quote}"</div>` : `<div class="section" onclick="toggleWorkspace('quote',${n.id},'${safeName}')" style="cursor:pointer"><h3>Quote ✎</h3><div class="section-content" style="color:var(--text-dim)">No quote set</div></div>`;
     const safeName = n.name.replace(/'/g,"\\\\'").replace(/"/g,"&quot;");
 
     // ── COLUMN 2: STAT BLOCK ──
@@ -2022,10 +2026,7 @@ function renderNPCDetail(n) {
     const powersPanel = `<div class="weapons-panel panel-clickable"><h3 onclick="openWorkspace('powers',${n.id},'${safeName}')">Powers ✎</h3>${powSummary}</div>`;
 
     // Tactics
-    let tacticsHtml = '';
-    if (n.tactics) {
-        tacticsHtml = `<div class="section"><h3>Tactics</h3><div class="section-content">${n.tactics}</div></div>`;
-    }
+    const tacticsHtml = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Tactics ✎</h3><div class="section-content">${n.tactics || '<span style="color:var(--text-dim)">Not set</span>'}</div></div>`;
 
     // Action buttons + production status
     const statusHtml = `
@@ -2054,8 +2055,8 @@ function renderNPCDetail(n) {
             ${portraitSrc ? ` · <span class="portrait-upload-btn" onclick="deletePortrait(${n.id})">Remove</span>` : ''}
         </div>`;
 
-    const desc = n.description ? `<div class="section"><h3>Description</h3><div class="section-content">${n.description}</div></div>` : '';
-    const bg = n.background ? `<div class="section"><h3>Background</h3><div class="section-content">${n.background}</div></div>` : '';
+    const desc = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Description ✎</h3><div class="section-content">${n.description || '<span style=\'color:var(--text-dim)\'>Not set</span>'}</div></div>`;
+    const bg = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Background ✎</h3><div class="section-content">${n.background || '<span style=\'color:var(--text-dim)\'>Not set</span>'}</div></div>`;
 
     let narrative = '';
     const narParts = [];
@@ -2064,7 +2065,7 @@ function renderNPCDetail(n) {
     if (n.services) narParts.push(`<p><strong>Services:</strong> ${n.services}</p>`);
     if (n.adventure_hook) narParts.push(`<p><strong>Adventure Hook:</strong> ${n.adventure_hook}</p>`);
     if (narParts.length) {
-        narrative = `<div class="section"><h3>Story</h3><div class="section-content">${narParts.join('')}</div></div>`;
+        narrative = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Story ✎</h3><div class="section-content">${narParts.join('')}</div></div>`;
     }
 
     let orgsHtml = '';
@@ -2295,7 +2296,7 @@ function openWorkspace(type, npcId, name) {
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
     const ws = document.getElementById('workspacePanel');
-    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS, skills: renderSkillsWS, attributes: renderAttributesWS };
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS, skills: renderSkillsWS, attributes: renderAttributesWS, quote: renderQuoteWS, narrative: renderNarrativeWS };
     if (renderers[type]) {
         ws.innerHTML = renderers[type](npcId, name);
         // Trigger load
@@ -2311,6 +2312,8 @@ function openWorkspace(type, npcId, name) {
             fgxml:      () => loadFgxmlWS(npcId),
             skills:     () => { currentSkillsNpcId = npcId; loadSkills(); },
             attributes: () => {},
+            quote:      () => {},
+            narrative:  () => {},
         };
         loaders[type]();
     }
@@ -2496,6 +2499,46 @@ async function saveAttributesWS() {
     ['pace','parry','toughness','toughness_armor','bennies'].forEach(f => {
         data[f] = parseInt(document.getElementById('attrWS_'+f).value) || 0;
     });
+    await api('/api/npcs/'+currentNPC.id, 'PUT', data);
+    selectNPC(currentNPC.id);
+}
+
+function renderQuoteWS(npcId, name) {
+    const n = currentNPC;
+    return '<div class="workspace-header"><h3>Quote</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>'
+        + '<div class="form-group"><label>Signature Quote</label><textarea id="wsQuote" rows="3" style="font-style:italic">'+(n.quote||'')+'</textarea></div>'
+        + '<div class="form-actions"><button class="btn primary" onclick="saveQuoteWS()">Save</button></div>';
+}
+
+async function saveQuoteWS() {
+    const quote = document.getElementById('wsQuote').value.trim();
+    await api('/api/npcs/'+currentNPC.id, 'PUT', {quote: quote});
+    selectNPC(currentNPC.id);
+}
+
+function renderNarrativeWS(npcId, name) {
+    const n = currentNPC;
+    return '<div class="workspace-header"><h3>Narrative</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>'
+        + '<div class="form-group"><label>Description</label><textarea id="wsDesc" rows="3">'+(n.description||'')+'</textarea></div>'
+        + '<div class="form-group"><label>Background</label><textarea id="wsBg" rows="3">'+(n.background||'')+'</textarea></div>'
+        + '<div class="form-group"><label>What They Want</label><textarea id="wsMotivation" rows="2">'+(n.motivation||'')+'</textarea></div>'
+        + '<div class="form-group"><label>Their Secret</label><textarea id="wsSecret" rows="2">'+(n.secret||'')+'</textarea></div>'
+        + '<div class="form-group"><label>Services</label><textarea id="wsServices" rows="2">'+(n.services||'')+'</textarea></div>'
+        + '<div class="form-group"><label>Adventure Hook</label><textarea id="wsHook" rows="2">'+(n.adventure_hook||'')+'</textarea></div>'
+        + '<div class="form-group"><label>Tactics</label><textarea id="wsTactics" rows="3">'+(n.tactics||'')+'</textarea></div>'
+        + '<div class="form-actions"><button class="btn primary" onclick="saveNarrativeWS()">Save</button></div>';
+}
+
+async function saveNarrativeWS() {
+    const data = {
+        description: document.getElementById('wsDesc').value.trim(),
+        background: document.getElementById('wsBg').value.trim(),
+        motivation: document.getElementById('wsMotivation').value.trim(),
+        secret: document.getElementById('wsSecret').value.trim(),
+        services: document.getElementById('wsServices').value.trim(),
+        adventure_hook: document.getElementById('wsHook').value.trim(),
+        tactics: document.getElementById('wsTactics').value.trim()
+    };
     await api('/api/npcs/'+currentNPC.id, 'PUT', data);
     selectNPC(currentNPC.id);
 }
