@@ -1,0 +1,19 @@
+# Local configuration (contains API keys)
+config_local.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Database files (user data)
+*.db
+*.db-wal
+*.db-shm
+
+# Portraits (user uploads)
+portraits/
+
+# OS files
+.DS_Store
+Thumbs.db
