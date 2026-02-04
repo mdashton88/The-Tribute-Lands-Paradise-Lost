@@ -1948,7 +1948,7 @@ function renderNPCDetail(n) {
                 </div>
                 <div class="stat-section">
                     <span class="stat-section-label">Skills</span>
-                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${safeName}')">Edit</button></div>
+                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="toggleWorkspace('skills',${n.id},'${safeName}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
@@ -2272,7 +2272,7 @@ function openWorkspace(type, npcId, name) {
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
     const ws = document.getElementById('workspacePanel');
-    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS };
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS, skills: renderSkillsWS };
     if (renderers[type]) {
         ws.innerHTML = renderers[type](npcId, name);
         // Trigger load
@@ -2286,6 +2286,7 @@ function openWorkspace(type, npcId, name) {
             edit:       () => loadEditWS(npcId),
             statblock:  () => loadStatblockWS(npcId),
             fgxml:      () => loadFgxmlWS(npcId),
+            skills:     () => { currentSkillsNpcId = npcId; loadSkills(); },
         };
         loaders[type]();
     }
@@ -2421,6 +2422,20 @@ function renderFgxmlWS(npcId, name) {
     return `<div class="workspace-header"><h3>Fantasy Grounds XML — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
         <div id="wsExportContent">Loading...</div>`;
 }
+
+function renderSkillsWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Skills — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="skillsList"></div>
+        <div class="form-row" style="margin-top:10px">
+            <div class="form-group"><label>Skill Name</label><input id="newSkillName" placeholder="Fighting"></div>
+            <div class="form-group" style="max-width:100px"><label>Die</label>
+                <select id="newSkillDie"><option value="4">d4</option><option value="6">d6</option><option value="8" selected>d8</option><option value="10">d10</option><option value="12">d12</option></select>
+            </div>
+            <div class="form-group" style="max-width:80px;align-self:flex-end">
+                <button class="btn primary" onclick="addSkill()">Add</button>
+            </div>
+        </div>`;}
+
 
 async function loadFgxmlWS(npcId) {
     const data = await api('/api/npcs/' + npcId + '/fgxml');
