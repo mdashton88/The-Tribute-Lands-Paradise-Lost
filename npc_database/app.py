@@ -117,6 +117,7 @@ def set_setting(key, value):
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()
+    checkpoint_wal()  # Ensure settings persist immediately
 
 def build_character_prompt(npc):
     """Build the character-specific part of the portrait prompt from NPC data."""
