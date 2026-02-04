@@ -2376,8 +2376,49 @@ async function loadStatblockWS(npcId) {
     const data = await api('/api/npcs/' + npcId + '/statblock');
     const el = document.getElementById('wsExportContent');
     if (!el) return;
-    el.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${data.statblock}</pre>
-        <button class="btn sm" onclick="copyToClipboard(this)" style="margin-top:8px">Copy</button>`;
+    // Convert markdown to simple HTML
+    const html = data.statblock
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+    el.innerHTML = `
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button class="btn sm" id="sbTabHtml" onclick="showStatblockTab('html')" style="border-bottom:2px solid var(--accent)">Formatted</button>
+            <button class="btn sm" id="sbTabMd" onclick="showStatblockTab('md')">Markdown</button>
+        </div>
+        <div id="sbHtmlView" style="font-size:13px;line-height:1.6">${html}</div>
+        <div id="sbMdView" style="display:none"><pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${data.statblock.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+            <button class="btn sm" onclick="copyStatblockHtml()">Copy HTML</button>
+            <button class="btn sm" onclick="copyStatblockMd()">Copy Markdown</button>
+        </div>`;
+    window._statblockMd = data.statblock;
+    window._statblockHtml = html;
+}
+
+function showStatblockTab(tab) {
+    document.getElementById('sbHtmlView').style.display = tab === 'html' ? '' : 'none';
+    document.getElementById('sbMdView').style.display = tab === 'md' ? '' : 'none';
+    document.getElementById('sbTabHtml').style.borderBottom = tab === 'html' ? '2px solid var(--accent)' : 'none';
+    document.getElementById('sbTabMd').style.borderBottom = tab === 'md' ? '2px solid var(--accent)' : 'none';
+}
+
+function copyStatblockHtml() {
+    // Copy as rich text so it pastes formatted into Word
+    const htmlView = document.getElementById('sbHtmlView');
+    const blob = new Blob([htmlView.innerHTML], {type: 'text/html'});
+    const textBlob = new Blob([window._statblockMd], {type: 'text/plain'});
+    navigator.clipboard.write([new ClipboardItem({'text/html': blob, 'text/plain': textBlob})]);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy HTML', 1500);
+}
+
+function copyStatblockMd() {
+    navigator.clipboard.writeText(window._statblockMd);
+    event.target.textContent = 'Copied!';
+    setTimeout(() => event.target.textContent = 'Copy Markdown', 1500);
 }
 
 function renderFgxmlWS(npcId, name) {
