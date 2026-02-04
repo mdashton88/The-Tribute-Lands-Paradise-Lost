@@ -22,6 +22,9 @@ import sys
 import webbrowser
 import threading
 import subprocess
+import urllib.request
+import urllib.error
+import base64
 from pathlib import Path
 from flask import Flask, render_template_string, request, jsonify, send_file, redirect, url_for, send_from_directory
 from werkzeug.utils import secure_filename
@@ -90,6 +93,99 @@ def get_backup_dir():
     return p
 
 app = Flask(__name__)
+
+# ============================================================
+# OPENAI PORTRAIT GENERATION
+# ============================================================
+
+OPENAI_API_KEY = None
+try:
+    from config_local import OPENAI_API_KEY
+except ImportError:
+    pass  # No local config, portrait generation disabled
+
+def build_portrait_prompt(npc):
+    """Build a DALL-E prompt from NPC data for grimdark fantasy portrait."""
+    # Base style
+    style = "Grimdark fantasy portrait, oil painting style, dark moody lighting, Warhammer Fantasy aesthetic"
+    
+    # Ancestry mapping
+    ancestry_desc = {
+        'Human': 'human',
+        'Dwarf': 'dwarf with thick beard and weathered features',
+        'Elf': 'elf with sharp angular features and pointed ears',
+        'Half-Elf': 'half-elf with subtle pointed ears',
+        'Orc': 'orc with greenish skin and tusks',
+        'Half-Orc': 'half-orc with orcish features',
+        'Halfling': 'halfling with youthful features',
+        'Gnome': 'gnome with exaggerated features',
+    }.get(npc.get('ancestry', ''), 'human')
+    
+    # Region flavor
+    region_flavor = {
+        'Ammaria': 'wealthy merchant city, fine but practical clothing',
+        'Saltlands': 'coastal corsair, weathered by salt and sun, nautical clothing',
+        'Vinlands': 'northern warrior, furs and practical armor, Germanic aesthetic',
+        'Concordium': 'sky city dweller, elaborate robes, artificer aesthetic',
+        'Glasrya': 'imperial citizen, decadent and cruel beauty, Melnibonéan aesthetic',
+    }.get(npc.get('region', ''), '')
+    
+    # Archetype
+    archetype = npc.get('archetype', '')
+    
+    # Build the prompt
+    parts = [style]
+    parts.append(f"Portrait of a {ancestry_desc}")
+    
+    if archetype:
+        parts.append(f"who is a {archetype.lower()}")
+    
+    if region_flavor:
+        parts.append(f"from a {region_flavor}")
+    
+    # Add description if available
+    desc = npc.get('description', '')
+    if desc and len(desc) < 200:
+        parts.append(f"Physical appearance: {desc[:200]}")
+    
+    # Tier affects presence
+    tier = npc.get('tier', '')
+    if tier == 'Wild Card':
+        parts.append("commanding presence, memorable face, protagonist energy")
+    
+    parts.append("head and shoulders portrait, looking at viewer, detailed face, no text, no watermark")
+    
+    return ". ".join(parts)
+
+def generate_portrait_dalle(prompt, size="1024x1024", quality="standard"):
+    """Call DALL-E 3 API to generate portrait."""
+    if not OPENAI_API_KEY:
+        return None, "No OpenAI API key configured"
+    
+    url = "https://api.openai.com/v1/images/generations"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = json.dumps({
+        "model": "dall-e-3",
+        "prompt": prompt,
+        "n": 1,
+        "size": size,
+        "quality": quality,
+        "response_format": "b64_json"
+    }).encode()
+    
+    req = urllib.request.Request(url, data=data, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read().decode())
+            return result['data'][0]['b64_json'], None
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        return None, f"API error {e.code}: {error_body}"
+    except Exception as e:
+        return None, str(e)
 
 # ============================================================
 # DATABASE HELPERS
@@ -683,6 +779,26 @@ HTML_TEMPLATE = '''
             color: var(--accent-dim);
         }
         .portrait-upload-btn:hover { color: var(--accent); }
+        .portrait-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+        .portrait-generating {
+            position: relative;
+        }
+        .portrait-generating::after {
+            content: 'Generating...';
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            font-size: 12px;
+        }
         .stat-block-panel {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -2044,13 +2160,16 @@ function renderNPCDetail(n) {
     const portraitSrc = n.portrait_path ? `/portraits/${n.portrait_path}?t=${Date.now()}` : '';
     const portraitHtml = `
         <div class="portrait-area">
-            <div class="portrait-frame">
+            <div class="portrait-frame" id="portraitFrame">
                 ${portraitSrc ? `<img src="${portraitSrc}" alt="${n.name}">` : '<span class="portrait-placeholder">No portrait</span>'}
             </div>
-            <label class="portrait-upload-btn">
-                Upload Portrait <input type="file" accept="image/*" style="display:none" onchange="uploadPortrait(${n.id}, this)">
-            </label>
-            ${portraitSrc ? ` · <span class="portrait-upload-btn" onclick="deletePortrait(${n.id})">Remove</span>` : ''}
+            <div class="portrait-actions">
+                <span class="portrait-upload-btn" onclick="openPortraitGenerator(${n.id})">⚡ Generate</span>
+                <label class="portrait-upload-btn">
+                    Upload <input type="file" accept="image/*" style="display:none" onchange="uploadPortrait(${n.id}, this)">
+                </label>
+                ${portraitSrc ? `<span class="portrait-upload-btn" onclick="deletePortrait(${n.id})">Remove</span>` : ''}
+            </div>
         </div>`;
 
     const desc = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Description ✎</h3><div class="section-content">${n.description || '<span style="color:var(--text-dim)">Not set</span>'}</div></div>`;
@@ -2741,6 +2860,78 @@ async function uploadPortrait(npcId, input) {
 async function deletePortrait(npcId) {
     await api(`/api/npcs/${npcId}/portrait`, 'DELETE');
     if (currentNPC) selectNPC(currentNPC.id);
+}
+
+async function openPortraitGenerator(npcId) {
+    // Fetch the auto-generated prompt
+    const data = await api(`/api/portrait-prompt/${npcId}`);
+    if (!data.has_api_key) {
+        alert('OpenAI API key not configured. Create config_local.py with your API key.');
+        return;
+    }
+    
+    // Open workspace with prompt editor
+    const ws = document.getElementById('workspacePanel');
+    ws.innerHTML = `
+        <div class="workspace-header"><h3>Generate Portrait</h3><button class="btn sm" onclick="closeWorkspace()">✕ Close</button></div>
+        <div class="form-group">
+            <label>Prompt (edit to customize)</label>
+            <textarea id="portraitPrompt" rows="8" style="font-size:12px">${data.prompt}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Quality</label>
+            <select id="portraitQuality">
+                <option value="standard">Standard ($0.04)</option>
+                <option value="hd">HD ($0.08)</option>
+            </select>
+        </div>
+        <div id="portraitStatus" style="margin:10px 0;font-size:12px;color:var(--text-dim)"></div>
+        <div class="form-actions">
+            <button class="btn" onclick="resetPortraitPrompt(${npcId})">Reset Prompt</button>
+            <button class="btn primary" onclick="generatePortrait(${npcId})" id="generateBtn">⚡ Generate Portrait</button>
+        </div>
+    `;
+    activeWorkspace = { type: 'portrait', npcId: npcId };
+}
+
+async function resetPortraitPrompt(npcId) {
+    const data = await api(`/api/portrait-prompt/${npcId}`);
+    document.getElementById('portraitPrompt').value = data.prompt;
+}
+
+async function generatePortrait(npcId) {
+    const prompt = document.getElementById('portraitPrompt').value;
+    const quality = document.getElementById('portraitQuality').value;
+    const btn = document.getElementById('generateBtn');
+    const status = document.getElementById('portraitStatus');
+    const frame = document.getElementById('portraitFrame');
+    
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+    status.innerHTML = '<span style="color:var(--accent)">⏳ Calling DALL-E 3... this takes 15-30 seconds</span>';
+    if (frame) frame.classList.add('portrait-generating');
+    
+    try {
+        const resp = await fetch(`/api/npcs/${npcId}/generate-portrait`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: prompt, quality: quality })
+        });
+        const data = await resp.json();
+        
+        if (data.success) {
+            status.innerHTML = '<span style="color:#4a4">✓ Portrait generated!</span>';
+            selectNPC(npcId);  // Refresh to show new portrait
+        } else {
+            status.innerHTML = '<span style="color:#a44">✗ Error: ' + (data.error || 'Unknown error') + '</span>';
+        }
+    } catch (e) {
+        status.innerHTML = '<span style="color:#a44">✗ Error: ' + e.message + '</span>';
+    }
+    
+    btn.disabled = false;
+    btn.textContent = '⚡ Generate Portrait';
+    if (frame) frame.classList.remove('portrait-generating');
 }
 
 // ============================================================
@@ -4898,6 +5089,73 @@ def api_delete_portrait(npc_id):
     conn.commit()
     conn.close()
     return jsonify({"success": True})
+
+@app.route('/api/npcs/<int:npc_id>/generate-portrait', methods=['POST'])
+def api_generate_portrait(npc_id):
+    """Generate a portrait using DALL-E 3 based on NPC data."""
+    if not OPENAI_API_KEY:
+        return jsonify({"success": False, "error": "OpenAI API key not configured. Create config_local.py with OPENAI_API_KEY."}), 400
+    
+    conn = get_db()
+    row = conn.execute("SELECT * FROM npcs WHERE id = ?", (npc_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "error": "NPC not found"}), 404
+    
+    npc = dict(row)
+    conn.close()
+    
+    # Build prompt from NPC data
+    prompt = build_portrait_prompt(npc)
+    
+    # Check for custom prompt override
+    data = request.get_json() or {}
+    if data.get('prompt'):
+        prompt = data['prompt']
+    
+    # Generate the image
+    b64_image, error = generate_portrait_dalle(prompt, quality=data.get('quality', 'standard'))
+    if error:
+        return jsonify({"success": False, "error": error, "prompt": prompt}), 500
+    
+    # Save the image
+    portraits_dir = APP_DIR / 'portraits'
+    portraits_dir.mkdir(exist_ok=True)
+    
+    # Generate filename
+    safe_name = "".join(c if c.isalnum() or c in "._- " else "_" for c in npc['name']).strip()
+    filename = f"{safe_name}_{npc_id}.png"
+    filepath = portraits_dir / filename
+    
+    # Decode and save
+    import base64 as b64_module
+    image_data = b64_module.b64decode(b64_image)
+    with open(filepath, 'wb') as f:
+        f.write(image_data)
+    
+    # Update database
+    conn = get_db()
+    conn.execute("UPDATE npcs SET portrait_path = ? WHERE id = ?", (filename, npc_id))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({
+        "success": True, 
+        "portrait_path": filename,
+        "prompt": prompt
+    })
+
+@app.route('/api/portrait-prompt/<int:npc_id>')
+def api_portrait_prompt(npc_id):
+    """Preview the auto-generated prompt for an NPC without generating."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM npcs WHERE id = ?", (npc_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "NPC not found"}), 404
+    
+    prompt = build_portrait_prompt(dict(row))
+    return jsonify({"prompt": prompt, "has_api_key": bool(OPENAI_API_KEY)})
 
 # ============================================================
 # LAUNCH
