@@ -797,6 +797,8 @@ HTML_TEMPLATE = '''
             text-transform: uppercase;
             letter-spacing: 1.5px;
             margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--accent-dim);
         }
         .weapon-entry {
             padding: 4px 0;
