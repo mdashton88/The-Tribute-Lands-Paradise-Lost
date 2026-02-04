@@ -2057,8 +2057,8 @@ function renderNPCDetail(n) {
             ${portraitSrc ? ` · <span class="portrait-upload-btn" onclick="deletePortrait(${n.id})">Remove</span>` : ''}
         </div>`;
 
-    const desc = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Description ✎</h3><div class="section-content">${n.description || '<span style=\'color:var(--text-dim)\'>Not set</span>'}</div></div>`;
-    const bg = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Background ✎</h3><div class="section-content">${n.background || '<span style=\'color:var(--text-dim)\'>Not set</span>'}</div></div>`;
+    const desc = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Description ✎</h3><div class="section-content">${n.description || '<span style="color:var(--text-dim)">Not set</span>'}</div></div>`;
+    const bg = `<div class="section" onclick="toggleWorkspace('narrative',${n.id},'${safeName}')" style="cursor:pointer"><h3>Background ✎</h3><div class="section-content">${n.background || '<span style="color:var(--text-dim)">Not set</span>'}</div></div>`;
 
     let narrative = '';
     const narParts = [];
