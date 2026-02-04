@@ -104,10 +104,29 @@ try:
 except ImportError:
     pass  # No local config, portrait generation disabled
 
-def build_portrait_prompt(npc):
-    """Build a DALL-E prompt from NPC data for grimdark fantasy portrait."""
-    # Base style
-    style = "Grimdark fantasy portrait, oil painting style, dark moody lighting, Warhammer Fantasy aesthetic"
+def get_setting(key, default=None):
+    """Get a setting value from the database."""
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row['value'] if row else default
+
+def set_setting(key, value):
+    """Set a setting value in the database."""
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+    conn.commit()
+    conn.close()
+
+def build_character_prompt(npc):
+    """Build the character-specific part of the portrait prompt from NPC data."""
+    parts = []
+    
+    # Gender
+    gender = npc.get('gender', 'Unspecified')
+    gender_text = ''
+    if gender and gender != 'Unspecified':
+        gender_text = gender.lower() + ' '
     
     # Ancestry mapping
     ancestry_desc = {
@@ -121,41 +140,45 @@ def build_portrait_prompt(npc):
         'Gnome': 'gnome with exaggerated features',
     }.get(npc.get('ancestry', ''), 'human')
     
-    # Region flavor
-    region_flavor = {
-        'Ammaria': 'wealthy merchant city, fine but practical clothing',
-        'Saltlands': 'coastal corsair, weathered by salt and sun, nautical clothing',
-        'Vinlands': 'northern warrior, furs and practical armor, Germanic aesthetic',
-        'Concordium': 'sky city dweller, elaborate robes, artificer aesthetic',
-        'Glasrya': 'imperial citizen, decadent and cruel beauty, Melnibonéan aesthetic',
-    }.get(npc.get('region', ''), '')
+    parts.append(f"Portrait of a {gender_text}{ancestry_desc}")
     
     # Archetype
     archetype = npc.get('archetype', '')
-    
-    # Build the prompt
-    parts = [style]
-    parts.append(f"Portrait of a {ancestry_desc}")
-    
     if archetype:
         parts.append(f"who is a {archetype.lower()}")
     
+    # Region flavor
+    region_flavor = {
+        'Ammaria': 'from a wealthy merchant city, wearing fine but practical clothing',
+        'Saltlands': 'from the corsair coast, weathered by salt and sun, wearing nautical clothing',
+        'Vinlands': 'from the northern frontier, wearing furs and practical armor, Germanic aesthetic',
+        'Concordium': 'from the sky cities, wearing elaborate robes with artificer aesthetic',
+        'Glasrya': 'from the Imperial City, with decadent and cruel beauty, Melnibonéan aesthetic',
+    }.get(npc.get('region', ''), '')
+    
     if region_flavor:
-        parts.append(f"from a {region_flavor}")
+        parts.append(region_flavor)
     
     # Add description if available
     desc = npc.get('description', '')
-    if desc and len(desc) < 200:
-        parts.append(f"Physical appearance: {desc[:200]}")
+    if desc and len(desc) > 10:
+        # Truncate long descriptions
+        desc_text = desc[:250] if len(desc) > 250 else desc
+        parts.append(f"Physical details: {desc_text}")
     
     # Tier affects presence
     tier = npc.get('tier', '')
     if tier == 'Wild Card':
-        parts.append("commanding presence, memorable face, protagonist energy")
+        parts.append("Commanding presence, memorable face, protagonist energy")
     
-    parts.append("head and shoulders portrait, looking at viewer, detailed face, no text, no watermark")
-    
-    return ". ".join(parts)
+    return ". ".join(parts) + "."
+
+def build_full_portrait_prompt(npc):
+    """Combine style prompt with character prompt."""
+    style = get_setting('portrait_style_prompt', 
+        "Grimdark fantasy portrait, oil painting style, dark atmospheric lighting, Warhammer Fantasy Old World aesthetic. Moody and weathered. Head and shoulders composition, looking at viewer, highly detailed face, no text, no watermark, no signature.")
+    character = build_character_prompt(npc)
+    return f"{style}\n\n{character}"
 
 def generate_portrait_dalle(prompt, size="1024x1024", quality="standard"):
     """Call DALL-E 3 API to generate portrait."""
@@ -307,6 +330,29 @@ def init_db_if_needed():
         conn.execute("ALTER TABLE npcs ADD COLUMN portrait_path TEXT")
         conn.commit()
         print("  Migrated: portrait_path column added")
+    if 'gender' not in cols:
+        conn.execute("ALTER TABLE npcs ADD COLUMN gender TEXT DEFAULT 'Unspecified'")
+        conn.commit()
+        print("  Migrated: gender column added")
+    if 'ancestry' not in cols:
+        conn.execute("ALTER TABLE npcs ADD COLUMN ancestry TEXT DEFAULT 'Human'")
+        conn.commit()
+        print("  Migrated: ancestry column added")
+    conn.close()
+
+    # Settings table migration
+    conn = get_db()
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+    if 'settings' not in tables:
+        conn.execute("""CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )""")
+        # Insert default portrait style prompt
+        default_style = "Grimdark fantasy portrait, oil painting style, dark atmospheric lighting, Warhammer Fantasy Old World aesthetic. Moody and weathered. Head and shoulders composition, looking at viewer, highly detailed face, no text, no watermark, no signature."
+        conn.execute("INSERT INTO settings (key, value) VALUES ('portrait_style_prompt', ?)", (default_style,))
+        conn.commit()
+        print("  Migrated: settings table added with default portrait style")
     conn.close()
 
     # Ensure portraits directory exists
@@ -2324,6 +2370,8 @@ async function saveNPC() {
         region: document.getElementById('f_region').value,
         tier: document.getElementById('f_tier').value,
         archetype: document.getElementById('f_archetype').value || null,
+        gender: document.getElementById('f_gender').value || 'Unspecified',
+        ancestry: document.getElementById('f_ancestry').value || 'Human',
         quote: document.getElementById('f_quote').value || null,
         description: document.getElementById('f_description').value || null,
         background: document.getElementById('f_background').value || null,
@@ -2471,6 +2519,14 @@ async function loadEditWS(npcId) {
             </div>
             <div class="form-group"><label>Archetype</label>
                 <select id="f_archetype"><option value="">—</option>${['combat','social','criminal','scholarly','maritime','wilderness','spellcaster'].map(a=>'<option'+(a===n.archetype?' selected':'')+'>'+a+'</option>').join('')}</select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Gender</label>
+                <select id="f_gender">${['Unspecified','Male','Female','Other'].map(g=>'<option'+(g===n.gender?' selected':'')+'>'+g+'</option>').join('')}</select>
+            </div>
+            <div class="form-group"><label>Ancestry</label>
+                <select id="f_ancestry">${['Human','Dwarf','Elf','Half-Elf','Halfling','Orc','Half-Orc','Gnome','Other'].map(a=>'<option'+(a===n.ancestry?' selected':'')+'>'+a+'</option>').join('')}</select>
             </div>
         </div>
         <div class="form-group"><label>Signature Quote</label><input id="f_quote" value="${(n.quote||'').replace(/"/g,'&quot;')}"></div>
@@ -2874,33 +2930,48 @@ async function openPortraitGenerator(npcId) {
     const ws = document.getElementById('workspacePanel');
     ws.innerHTML = `
         <div class="workspace-header"><h3>Generate Portrait</h3><button class="btn sm" onclick="closeWorkspace()">✕ Close</button></div>
-        <div class="form-group">
-            <label>Prompt (edit to customize)</label>
-            <textarea id="portraitPrompt" rows="8" style="font-size:12px">${data.prompt}</textarea>
+        <div class="ws-section">
+            <h4>Style Prompt <span style="font-weight:normal;font-size:10px;color:var(--text-dim)">(applies to all portraits)</span></h4>
+            <textarea id="portraitStylePrompt" rows="4" style="font-size:12px">${data.style_prompt}</textarea>
+            <div style="margin-top:4px"><button class="btn sm" onclick="saveStylePrompt()">Save as Default</button></div>
         </div>
-        <div class="form-group">
-            <label>Quality</label>
-            <select id="portraitQuality">
-                <option value="standard">Standard ($0.04)</option>
-                <option value="hd">HD ($0.08)</option>
-            </select>
+        <div class="ws-section">
+            <h4>Character Prompt <span style="font-weight:normal;font-size:10px;color:var(--text-dim)">(auto-generated from NPC data)</span></h4>
+            <textarea id="portraitCharPrompt" rows="5" style="font-size:12px">${data.character_prompt}</textarea>
+            <div style="margin-top:4px"><button class="btn sm" onclick="resetCharacterPrompt(${npcId})">Reset from NPC Data</button></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Quality</label>
+                <select id="portraitQuality">
+                    <option value="standard">Standard ($0.04)</option>
+                    <option value="hd">HD ($0.08)</option>
+                </select>
+            </div>
         </div>
         <div id="portraitStatus" style="margin:10px 0;font-size:12px;color:var(--text-dim)"></div>
         <div class="form-actions">
-            <button class="btn" onclick="resetPortraitPrompt(${npcId})">Reset Prompt</button>
             <button class="btn primary" onclick="generatePortrait(${npcId})" id="generateBtn">⚡ Generate Portrait</button>
         </div>
     `;
     activeWorkspace = { type: 'portrait', npcId: npcId };
 }
 
-async function resetPortraitPrompt(npcId) {
+async function saveStylePrompt() {
+    const style = document.getElementById('portraitStylePrompt').value;
+    await api('/api/settings/portrait-style', 'POST', { style_prompt: style });
+    alert('Style prompt saved as default for all portraits.');
+}
+
+async function resetCharacterPrompt(npcId) {
     const data = await api(`/api/portrait-prompt/${npcId}`);
-    document.getElementById('portraitPrompt').value = data.prompt;
+    document.getElementById('portraitCharPrompt').value = data.character_prompt;
 }
 
 async function generatePortrait(npcId) {
-    const prompt = document.getElementById('portraitPrompt').value;
+    const stylePrompt = document.getElementById('portraitStylePrompt').value;
+    const charPrompt = document.getElementById('portraitCharPrompt').value;
+    const fullPrompt = stylePrompt + "\n\n" + charPrompt;
     const quality = document.getElementById('portraitQuality').value;
     const btn = document.getElementById('generateBtn');
     const status = document.getElementById('portraitStatus');
@@ -2915,7 +2986,7 @@ async function generatePortrait(npcId) {
         const resp = await fetch(`/api/npcs/${npcId}/generate-portrait`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: prompt, quality: quality })
+            body: JSON.stringify({ prompt: fullPrompt, quality: quality })
         });
         const data = await resp.json();
         
@@ -2933,6 +3004,7 @@ async function generatePortrait(npcId) {
     btn.textContent = '⚡ Generate Portrait';
     if (frame) frame.classList.remove('portrait-generating');
 }
+
 
 // ============================================================
 // WEAPONS
@@ -5106,7 +5178,7 @@ def api_generate_portrait(npc_id):
     conn.close()
     
     # Build prompt from NPC data
-    prompt = build_portrait_prompt(npc)
+    prompt = build_full_portrait_prompt(npc)
     
     # Check for custom prompt override
     data = request.get_json() or {}
@@ -5154,8 +5226,31 @@ def api_portrait_prompt(npc_id):
     if not row:
         return jsonify({"error": "NPC not found"}), 404
     
-    prompt = build_portrait_prompt(dict(row))
-    return jsonify({"prompt": prompt, "has_api_key": bool(OPENAI_API_KEY)})
+    npc = dict(row)
+    style_prompt = get_setting('portrait_style_prompt', 
+        "Grimdark fantasy portrait, oil painting style, dark atmospheric lighting, Warhammer Fantasy Old World aesthetic. Moody and weathered. Head and shoulders composition, looking at viewer, highly detailed face, no text, no watermark, no signature.")
+    character_prompt = build_character_prompt(npc)
+    
+    return jsonify({
+        "style_prompt": style_prompt,
+        "character_prompt": character_prompt,
+        "full_prompt": f"{style_prompt}\n\n{character_prompt}",
+        "has_api_key": bool(OPENAI_API_KEY)
+    })
+
+@app.route('/api/settings/portrait-style', methods=['GET', 'POST'])
+def api_portrait_style():
+    """Get or set the portrait style prompt."""
+    if request.method == 'GET':
+        style = get_setting('portrait_style_prompt',
+            "Grimdark fantasy portrait, oil painting style, dark atmospheric lighting, Warhammer Fantasy Old World aesthetic. Moody and weathered. Head and shoulders composition, looking at viewer, highly detailed face, no text, no watermark, no signature.")
+        return jsonify({"style_prompt": style})
+    else:
+        data = request.get_json() or {}
+        if 'style_prompt' in data:
+            set_setting('portrait_style_prompt', data['style_prompt'])
+            return jsonify({"success": True})
+        return jsonify({"error": "No style_prompt provided"}), 400
 
 # ============================================================
 # LAUNCH
