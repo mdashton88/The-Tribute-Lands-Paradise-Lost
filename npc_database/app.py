@@ -104,6 +104,19 @@ try:
 except ImportError:
     pass  # No local config, portrait generation disabled
 
+def checkpoint_wal():
+    """Force WAL checkpoint so all changes are written to the main .db file."""
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+        print("  WAL checkpoint complete")
+    except Exception as e:
+        print(f"  WAL checkpoint warning: {e}")
+
+import atexit
+atexit.register(checkpoint_wal)
+
 def get_setting(key, default=None):
     """Get a setting value from the database."""
     conn = get_db()
@@ -220,19 +233,6 @@ def get_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
-
-def checkpoint_wal():
-    """Force WAL checkpoint so all changes are written to the main .db file."""
-    try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        conn.close()
-        print("  WAL checkpoint complete")
-    except Exception as e:
-        print(f"  WAL checkpoint warning: {e}")
-
-import atexit
-atexit.register(checkpoint_wal)
 
 def auto_seed_if_empty():
     """Automatically run seed_data.py if the database has no NPCs."""
