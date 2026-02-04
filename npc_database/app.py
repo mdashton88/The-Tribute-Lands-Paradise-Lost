@@ -729,15 +729,15 @@ HTML_TEMPLATE = '''
             background: rgba(255,255,255,0.02);
         }
         .stat-block-panel .clickable-section h3 {
-            font-size: 10px;
-            color: var(--text-dim);
+            font-size: 12px;
+            color: var(--accent);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 2px;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
             cursor: pointer;
         }
         .stat-block-panel .clickable-section h3:hover {
-            color: var(--accent);
+            color: var(--text-bright);
         }
         .stat-block-panel .stat-section-label {
             font-size: 10px;
