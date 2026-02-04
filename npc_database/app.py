@@ -733,6 +733,15 @@ HTML_TEMPLATE = '''
             margin-top: 10px;
             font-size: 13px;
         }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .summary-grid .weapons-panel {
+            margin-top: 0;
+        }
         .weapons-panel h3 {
             font-size: 12px;
             color: var(--accent);
@@ -2049,12 +2058,14 @@ function renderNPCDetail(n) {
             <div class="col-stats" id="colStats">
                 <div class="col-gauge" id="gaugeStats"></div>
                 ${statsPanel}
-                ${weaponsPanel}
-                ${armorPanel}
-                ${gearPanel}
+                <div class="summary-grid">
                 ${hindrancesPanel}
                 ${edgesPanel}
+                ${armorPanel}
+                ${weaponsPanel}
                 ${powersPanel}
+                ${gearPanel}
+                </div>
                 ${statusHtml}
                 <div id="exportOutput"></div>
             </div>
