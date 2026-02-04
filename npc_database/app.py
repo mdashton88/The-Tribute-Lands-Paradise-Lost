@@ -2971,7 +2971,7 @@ async function resetCharacterPrompt(npcId) {
 async function generatePortrait(npcId) {
     const stylePrompt = document.getElementById('portraitStylePrompt').value;
     const charPrompt = document.getElementById('portraitCharPrompt').value;
-    const fullPrompt = stylePrompt + "\n\n" + charPrompt;
+    const fullPrompt = stylePrompt + "\\n\\n" + charPrompt;
     const quality = document.getElementById('portraitQuality').value;
     const btn = document.getElementById('generateBtn');
     const status = document.getElementById('portraitStatus');
