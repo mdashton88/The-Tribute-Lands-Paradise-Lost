@@ -1942,14 +1942,8 @@ function renderNPCDetail(n) {
                     <span class="stat-block-tier">${tierText}${wcLabel}</span>
                     ${auditBadge}
                 </div>
-                <div class="stat-section">
-                    <span class="stat-section-label">Attributes</span>
-                    <div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div>
-                </div>
-                <div class="stat-section">
-                    <span class="stat-section-label">Skills</span>
-                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="toggleWorkspace('skills',${n.id},'${safeName}')">Edit</button></div>
-                </div>
+                <div class="weapons-panel panel-clickable"><h3 onclick="toggleWorkspace('attributes',${n.id},'${safeName}')">Attributes ✎</h3><div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div></div>
+                <div class="weapons-panel panel-clickable"><h3 onclick="toggleWorkspace('skills',${n.id},'${safeName}')">Skills ✎</h3><div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'}</div></div>
                 <div class="derived-row">
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${parryColour}">${n.parry}</div><div class="derived-label">Parry</div><div class="derived-popover">${parryPop}</div></div>
@@ -2272,7 +2266,7 @@ function openWorkspace(type, npcId, name) {
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
     const ws = document.getElementById('workspacePanel');
-    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS, skills: renderSkillsWS };
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS, skills: renderSkillsWS, attributes: renderAttributesWS };
     if (renderers[type]) {
         ws.innerHTML = renderers[type](npcId, name);
         // Trigger load
@@ -2287,6 +2281,7 @@ function openWorkspace(type, npcId, name) {
             statblock:  () => loadStatblockWS(npcId),
             fgxml:      () => loadFgxmlWS(npcId),
             skills:     () => { currentSkillsNpcId = npcId; loadSkills(); },
+            attributes: () => {},
         };
         loaders[type]();
     }
@@ -2435,6 +2430,46 @@ function renderSkillsWS(npcId, name) {
                 <button class="btn primary" onclick="addSkill()">Add</button>
             </div>
         </div>`;}
+
+function renderAttributesWS(npcId, name) {
+    const n = currentNPC;
+    const dieOpts = [0,4,6,8,10,12];
+    function mkSel(attr, val) {
+        return '<select id="attrWS_'+attr+'" class="die-select">' + dieOpts.map(d =>
+            '<option value="'+d+'"'+(d===(val||0)?' selected':'')+'>'+( d===0 ? '—' : 'd'+d)+'</option>'
+        ).join('') + '</select>';
+    }
+    return '<div class="workspace-header"><h3>Attributes &amp; Derived — '+name+'</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>'
+        + '<div style="margin-bottom:12px"><h4 style="color:var(--accent);margin-bottom:8px">Attributes</h4>'
+        + '<div class="form-row">'
+        + '<div class="form-group"><label>Agility</label>'+mkSel('agility',n.agility)+'</div>'
+        + '<div class="form-group"><label>Smarts</label>'+mkSel('smarts',n.smarts)+'</div>'
+        + '<div class="form-group"><label>Spirit</label>'+mkSel('spirit',n.spirit)+'</div>'
+        + '<div class="form-group"><label>Strength</label>'+mkSel('strength',n.strength)+'</div>'
+        + '<div class="form-group"><label>Vigor</label>'+mkSel('vigor',n.vigor)+'</div>'
+        + '</div></div>'
+        + '<div style="margin-bottom:12px"><h4 style="color:var(--accent);margin-bottom:8px">Derived Stats</h4>'
+        + '<div class="form-row">'
+        + '<div class="form-group"><label>Pace</label><input id="attrWS_pace" type="number" value="'+(n.pace||6)+'"></div>'
+        + '<div class="form-group"><label>Parry</label><input id="attrWS_parry" type="number" value="'+(n.parry||2)+'"></div>'
+        + '<div class="form-group"><label>Toughness</label><input id="attrWS_toughness" type="number" value="'+(n.toughness||5)+'"></div>'
+        + '<div class="form-group"><label>Tough (Armor)</label><input id="attrWS_toughness_armor" type="number" value="'+(n.toughness_armor||0)+'"></div>'
+        + '<div class="form-group"><label>Bennies</label><input id="attrWS_bennies" type="number" value="'+(n.bennies||0)+'"></div>'
+        + '</div></div>'
+        + '<div class="form-actions"><button class="btn primary" onclick="saveAttributesWS()">Save</button></div>';
+}
+
+async function saveAttributesWS() {
+    const data = {};
+    ['agility','smarts','spirit','strength','vigor'].forEach(a => {
+        data[a] = parseInt(document.getElementById('attrWS_'+a).value) || 0;
+    });
+    ['pace','parry','toughness','toughness_armor','bennies'].forEach(f => {
+        data[f] = parseInt(document.getElementById('attrWS_'+f).value) || 0;
+    });
+    await api('/api/npcs/'+currentNPC.id, 'PUT', data);
+    selectNPC(currentNPC.id);
+}
 
 
 async function loadFgxmlWS(npcId) {
