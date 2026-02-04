@@ -1209,6 +1209,24 @@ HTML_TEMPLATE = '''
     </div>
 </div>
 
+<!-- SKILLS MODAL -->
+<div class="modal-overlay" id="skillsModal">
+    <div class="modal" style="width:450px">
+        <h3>Manage Skills — <span id="skillsNpcName"></span></h3>
+        <div id="skillsList"></div>
+        <div class="form-row" style="margin-top:10px">
+            <div class="form-group"><label>Skill Name</label><input id="newSkillName" placeholder="Fighting"></div>
+            <div class="form-group" style="max-width:100px"><label>Die</label>
+                <select id="newSkillDie"><option value="4">d4</option><option value="6">d6</option><option value="8" selected>d8</option><option value="10">d10</option><option value="12">d12</option></select>
+            </div>
+            <div class="form-group" style="max-width:80px;align-self:flex-end">
+                <button class="btn primary" onclick="addSkill()">Add</button>
+            </div>
+        </div>
+        <div class="form-actions"><button class="btn" onclick="closeSkillsModal()">Done</button></div>
+    </div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div class="modal-overlay" id="settingsModal">
     <div class="modal" style="width:600px;max-height:80vh">
@@ -1899,13 +1917,13 @@ function renderNPCDetail(n) {
                     <span class="stat-block-tier">${tierText}${wcLabel}</span>
                     ${auditBadge}
                 </div>
-                <div class="stat-section panel-clickable" onclick="openWorkspace('attributes',${n.id},'${safeName}')">
-                    <span class="stat-section-label">Attributes ✎</span>
+                <div class="stat-section">
+                    <span class="stat-section-label">Attributes</span>
                     <div class="stat-val">Agility ${dieStr(n.agility)}, Smarts ${dieStr(n.smarts)}, Spirit ${dieStr(n.spirit)}, Strength ${dieStr(n.strength)}, Vigor ${dieStr(n.vigor)}</div>
                 </div>
-                <div class="stat-section panel-clickable" onclick="openWorkspace('skills',${n.id},'${safeName}')">
-                    <span class="stat-section-label">Skills ✎</span>
-                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'}</div>
+                <div class="stat-section">
+                    <span class="stat-section-label">Skills</span>
+                    <div class="stat-val">${skills || '<span style="color:var(--text-dim)">None</span>'} <button class="btn sm" onclick="openSkillsModal(${n.id},'${safeName}')">Edit</button></div>
                 </div>
                 <div class="derived-row">
                     <div class="derived-item" onmouseenter="showDerivedTip(this)" onmouseleave="hideDerivedTip()"><div class="derived-num" style="color:${paceColour}">${n.pace}</div><div class="derived-label">Pace</div><div class="derived-popover">${pacePop}</div></div>
@@ -2183,78 +2201,34 @@ async function saveNPC() {
 // ============================================================
 // SKILLS
 // ============================================================
-function openSkillsModal(npcId, name) { openWorkspace('skills', npcId, name); }
-function closeSkillsModal() { closeWorkspace(); }
-
-// ── SKILLS WORKSPACE RENDERER ──
-function renderSkillsWS(npcId, name) {
-    return `<div class="workspace-header"><h3>Skills — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
-        <div id="skillsList"></div>
-        <h4 style="margin-top:12px;color:var(--text-dim);font-size:12px">ADD SKILL</h4>
-        <div class="form-row" style="margin-bottom:6px;align-items:flex-end">
-            <div class="form-group"><label>Skill Name</label><input id="newSkillName" placeholder="Fighting" onkeydown="if(event.key==='Enter')addSkill()"></div>
-            <div class="form-group" style="max-width:100px"><label>Die</label>
-                <select id="newSkillDie"><option value="4">d4</option><option value="6">d6</option><option value="8" selected>d8</option><option value="10">d10</option><option value="12">d12</option></select>
-            </div>
-            <div class="form-group" style="max-width:80px;align-self:flex-end">
-                <button class="btn primary" onclick="addSkill()">Add</button>
-            </div>
-        </div>`;
+function openSkillsModal(npcId, name) {
+    currentSkillsNpcId = npcId;
+    document.getElementById('skillsNpcName').textContent = name;
+    document.getElementById('skillsModal').classList.add('active');
+    loadSkills();
 }
-async function loadSkillsWS() {
+function closeSkillsModal() {
+    document.getElementById('skillsModal').classList.remove('active');
+    if (currentNPC) selectNPC(currentNPC.id);
+}
+async function loadSkills() {
     const skills = await api(`/api/npcs/${currentSkillsNpcId}/skills`);
     const el = document.getElementById('skillsList');
-    if (!el) return;
     if (!skills.length) { el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No skills yet</div>'; return; }
     el.innerHTML = `<table class="data-table">${skills.map(s => `
         <tr><td>${s.name}</td><td>d${s.die}</td><td><button class="btn sm danger" onclick="deleteSkill(${s.id})">×</button></td></tr>`).join('')}</table>`;
 }
-async function loadSkills() { loadSkillsWS(); }
 async function addSkill() {
     const name = document.getElementById('newSkillName').value.trim();
     const die = document.getElementById('newSkillDie').value;
     if (!name) return;
     await api(`/api/npcs/${currentSkillsNpcId}/skills`, 'POST', {name, die: parseInt(die)});
     document.getElementById('newSkillName').value = '';
-    loadSkillsWS();
-    if (currentNPC) selectNPC(currentNPC.id);
+    loadSkills();
 }
 async function deleteSkill(skillId) {
     await api(`/api/skills/${skillId}`, 'DELETE');
-    loadSkillsWS();
-    if (currentNPC) selectNPC(currentNPC.id);
-}
-
-// ── ATTRIBUTES WORKSPACE RENDERER ──
-let currentAttribNpcId = null;
-function renderAttributesWS(npcId, name) {
-    currentAttribNpcId = npcId;
-    return `<div class="workspace-header"><h3>Attributes — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
-        <div id="attribForm">Loading...</div>`;
-}
-async function loadAttributesWS(npcId) {
-    const n = await api(`/api/npcs/${npcId}`);
-    const el = document.getElementById('attribForm');
-    if (!el) return;
-    const dieOpts = (val) => [4,6,8,10,12].map(d => `<option value="${d}" ${d==val?'selected':''}>${'d'+d}</option>`).join('');
-    el.innerHTML = `
-        <div class="form-row"><div class="form-group"><label>Agility</label><select id="ws_agility">${dieOpts(n.agility)}</select></div>
-        <div class="form-group"><label>Smarts</label><select id="ws_smarts">${dieOpts(n.smarts)}</select></div>
-        <div class="form-group"><label>Spirit</label><select id="ws_spirit">${dieOpts(n.spirit)}</select></div></div>
-        <div class="form-row"><div class="form-group"><label>Strength</label><select id="ws_strength">${dieOpts(n.strength)}</select></div>
-        <div class="form-group"><label>Vigor</label><select id="ws_vigor">${dieOpts(n.vigor)}</select></div></div>
-        <div style="margin-top:12px"><button class="btn primary" onclick="saveAttributes()">Save</button></div>`;
-}
-async function saveAttributes() {
-    const data = {
-        agility: parseInt(document.getElementById('ws_agility').value),
-        smarts: parseInt(document.getElementById('ws_smarts').value),
-        spirit: parseInt(document.getElementById('ws_spirit').value),
-        strength: parseInt(document.getElementById('ws_strength').value),
-        vigor: parseInt(document.getElementById('ws_vigor').value),
-    };
-    await api(`/api/npcs/${currentAttribNpcId}`, 'PUT', data);
-    if (currentNPC) selectNPC(currentNPC.id);
+    loadSkills();
 }
 
 // ============================================================
@@ -2270,7 +2244,7 @@ function openWorkspace(type, npcId, name) {
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
     const ws = document.getElementById('workspacePanel');
-    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, skills: renderSkillsWS, attributes: renderAttributesWS };
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS };
     if (renderers[type]) {
         ws.innerHTML = renderers[type](npcId, name);
         // Trigger load
@@ -2281,8 +2255,6 @@ function openWorkspace(type, npcId, name) {
             hindrances: () => { currentHindrancesNpcId = npcId; loadHindrances(); loadHindranceSources().then(() => loadHindranceCatalogue()); },
             edges:      () => { currentEdgesNpcId = npcId; loadEdges(); loadEdgeSources().then(() => loadEdgeCatalogue()); },
             powers:     () => { currentPowersNpcId = npcId; loadPowers(); loadPowerSources().then(() => loadPowerCatalogue()); },
-            skills:     () => { currentSkillsNpcId = npcId; loadSkillsWS(); },
-            attributes: () => { loadAttributesWS(npcId); },
         };
         loaders[type]();
     }
@@ -2290,7 +2262,7 @@ function openWorkspace(type, npcId, name) {
 function closeWorkspace() {
     activeWorkspace = null;
     const ws = document.getElementById('workspacePanel');
-    if (ws) ws.innerHTML = '<div class="workspace-empty"><div>Click any panel heading to edit</div><div class="ws-hint">Attributes ✎ · Skills ✎ · Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div></div>';
+    if (ws) ws.innerHTML = '<div class="workspace-empty"><div>Click any panel heading to edit</div><div class="ws-hint">Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div></div>';
     if (currentNPC) selectNPC(currentNPC.id);
 }
 
@@ -3005,11 +2977,9 @@ async function toggleStatus(npcId, field, value) {
 // ============================================================
 async function exportStatblock(npcId) {
     const data = await api(`/api/npcs/${npcId}/statblock`);
-    const ws = document.getElementById('workspacePanel');
-    activeWorkspace = 'statblock';
-    ws.innerHTML = `
-        <div class="workspace-header"><h3>Stat Block (Markdown)</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    document.getElementById('exportOutput').innerHTML = `
         <div class="export-panel">
+            <h3 style="font-size:13px;color:var(--accent)">STAT BLOCK (Markdown)</h3>
             <pre>${data.statblock}</pre>
             <button class="btn sm" onclick="copyToClipboard(this)" style="margin-top:6px">Copy</button>
         </div>`;
@@ -3017,11 +2987,9 @@ async function exportStatblock(npcId) {
 
 async function exportFGXml(npcId) {
     const data = await api(`/api/npcs/${npcId}/fgxml`);
-    const ws = document.getElementById('workspacePanel');
-    activeWorkspace = 'fgxml';
-    ws.innerHTML = `
-        <div class="workspace-header"><h3>Fantasy Grounds XML</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+    document.getElementById('exportOutput').innerHTML = `
         <div class="export-panel">
+            <h3 style="font-size:13px;color:var(--accent)">FANTASY GROUNDS XML</h3>
             <pre>${escapeHtml(data.xml)}</pre>
             <button class="btn sm" onclick="copyToClipboard(this)" style="margin-top:6px">Copy</button>
         </div>`;
@@ -4142,10 +4110,8 @@ def api_update():
         # After pull, handle stash: remote always wins for code files
         if stashed:
             if 'Already up to date' in output:
-                # No remote changes — restore local edits
                 subprocess.run(['git', 'stash', 'pop'], cwd=repo_path, capture_output=True, text=True, timeout=10)
             else:
-                # Remote had updates — drop local edits (remote version wins)
                 subprocess.run(['git', 'stash', 'drop'], cwd=repo_path, capture_output=True, text=True, timeout=10)
 
         if result.returncode == 0:
