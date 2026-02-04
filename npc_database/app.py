@@ -2932,22 +2932,20 @@ async function openPortraitGenerator(npcId) {
         <div class="workspace-header"><h3>Generate Portrait</h3><button class="btn sm" onclick="closeWorkspace()">✕ Close</button></div>
         <div class="ws-section">
             <h4>Style Prompt <span style="font-weight:normal;font-size:10px;color:var(--text-dim)">(applies to all portraits)</span></h4>
-            <textarea id="portraitStylePrompt" rows="4" style="font-size:12px">${data.style_prompt}</textarea>
-            <div style="margin-top:4px"><button class="btn sm" onclick="saveStylePrompt()">Save as Default</button></div>
+            <textarea id="portraitStylePrompt" rows="6" style="font-size:12px;width:100%;box-sizing:border-box">${data.style_prompt}</textarea>
+            <div style="margin-top:6px"><button class="btn sm" onclick="saveStylePrompt()">Save as Default</button></div>
         </div>
         <div class="ws-section">
             <h4>Character Prompt <span style="font-weight:normal;font-size:10px;color:var(--text-dim)">(auto-generated from NPC data)</span></h4>
-            <textarea id="portraitCharPrompt" rows="5" style="font-size:12px">${data.character_prompt}</textarea>
-            <div style="margin-top:4px"><button class="btn sm" onclick="resetCharacterPrompt(${npcId})">Reset from NPC Data</button></div>
+            <textarea id="portraitCharPrompt" rows="8" style="font-size:12px;width:100%;box-sizing:border-box">${data.character_prompt}</textarea>
+            <div style="margin-top:6px"><button class="btn sm" onclick="resetCharacterPrompt(${npcId})">Reset from NPC Data</button></div>
         </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Quality</label>
-                <select id="portraitQuality">
-                    <option value="standard">Standard ($0.04)</option>
-                    <option value="hd">HD ($0.08)</option>
-                </select>
-            </div>
+        <div class="form-group" style="margin-top:12px">
+            <label>Quality</label>
+            <select id="portraitQuality" style="width:auto">
+                <option value="standard">Standard ($0.04)</option>
+                <option value="hd">HD ($0.08)</option>
+            </select>
         </div>
         <div id="portraitStatus" style="margin:10px 0;font-size:12px;color:var(--text-dim)"></div>
         <div class="form-actions">
