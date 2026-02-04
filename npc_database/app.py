@@ -1943,7 +1943,7 @@ function renderNPCDetail(n) {
                 ${hindrances}${edges}${powers}${specials}
             </div>`;
     } else {
-        statsPanel = `<div class="stat-block-panel"><div class="stat-block-header-row"><span class="stat-block-tier">${tierText}</span></div><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="openEditModal(${n.id})">Edit NPC</button></div></div>`;
+        statsPanel = `<div class="stat-block-panel"><div class="stat-block-header-row"><span class="stat-block-tier">${tierText}</span></div><div style="color:var(--text-dim);font-size:12px">No attributes set. <button class="btn sm" onclick="toggleWorkspace('edit',${n.id},'${safeName}')">Edit NPC</button></div></div>`;
     }
 
     // Summary panels — compact, click header to open workspace
@@ -1996,9 +1996,9 @@ function renderNPCDetail(n) {
                 <label style="font-size:11px;cursor:pointer"><input type="checkbox" ${n.narrative_complete?'checked':''} onchange="toggleStatus(${n.id},'narrative_complete',this.checked)"> Narrative</label>
                 <label style="font-size:11px;cursor:pointer"><input type="checkbox" ${n.fg_export_ready?'checked':''} onchange="toggleStatus(${n.id},'fg_export_ready',this.checked)"> FG Ready</label>
             </div>
-            <button class="btn sm" onclick="openEditModal(${n.id})">Edit</button>
-            <button class="btn sm" onclick="exportStatblock(${n.id})">Stat Block</button>
-            <button class="btn sm" onclick="exportFGXml(${n.id})">FG XML</button>
+            <button class="btn sm" onclick="toggleWorkspace('edit',${n.id},'${safeName}')">Edit</button>
+            <button class="btn sm" onclick="toggleWorkspace('statblock',${n.id},'${safeName}')">Stat Block</button>
+            <button class="btn sm" onclick="toggleWorkspace('fgxml',${n.id},'${safeName}')">FG XML</button>
             <button class="btn sm danger" onclick="deleteNPC(${n.id})" style="margin-left:auto">Delete</button>
         </div>`;
 
@@ -2254,7 +2254,7 @@ function openWorkspace(type, npcId, name) {
     edgeSourcesLoaded = false;
     powerSourcesLoaded = false;
     const ws = document.getElementById('workspacePanel');
-    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS };
+    const renderers = { weapons: renderWeaponsWS, armor: renderArmorWS, gear: renderGearWS, hindrances: renderHindrancesWS, edges: renderEdgesWS, powers: renderPowersWS, edit: renderEditWS, statblock: renderStatblockWS, fgxml: renderFgxmlWS };
     if (renderers[type]) {
         ws.innerHTML = renderers[type](npcId, name);
         // Trigger load
@@ -2265,6 +2265,9 @@ function openWorkspace(type, npcId, name) {
             hindrances: () => { currentHindrancesNpcId = npcId; loadHindrances(); loadHindranceSources().then(() => loadHindranceCatalogue()); },
             edges:      () => { currentEdgesNpcId = npcId; loadEdges(); loadEdgeSources().then(() => loadEdgeCatalogue()); },
             powers:     () => { currentPowersNpcId = npcId; loadPowers(); loadPowerSources().then(() => loadPowerCatalogue()); },
+            edit:       () => loadEditWS(npcId),
+            statblock:  () => loadStatblockWS(npcId),
+            fgxml:      () => loadFgxmlWS(npcId),
         };
         loaders[type]();
     }
@@ -2274,6 +2277,102 @@ function closeWorkspace() {
     const ws = document.getElementById('workspacePanel');
     if (ws) ws.innerHTML = '<div class="workspace-empty"><div>Click any panel heading to edit</div><div class="ws-hint">Weapons ✎ · Armour ✎ · Gear ✎ · Hindrances ✎ · Edges ✎ · Powers ✎</div></div>';
     if (currentNPC) selectNPC(currentNPC.id);
+}
+
+function toggleWorkspace(type, npcId, name) {
+    if (activeWorkspace === type) { closeWorkspace(); return; }
+    openWorkspace(type, npcId, name);
+}
+
+function renderEditWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Edit — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="wsEditForm">Loading...</div>`;
+}
+
+async function loadEditWS(npcId) {
+    const n = await api('/api/npcs/' + npcId);
+    const el = document.getElementById('wsEditForm');
+    if (!el) return;
+    el.innerHTML = `
+        <input type="hidden" id="editId" value="${npcId}">
+        <div class="form-row">
+            <div class="form-group"><label>Name *</label><input id="f_name" value="${(n.name||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-group"><label>Title / Role</label><input id="f_title" value="${(n.title||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Region *</label>
+                <select id="f_region">${['Ammaria','Saltlands','Vinlands','Concordium','Glasrya','Global'].map(r=>'<option'+(r===n.region?' selected':'')+'>'+r+'</option>').join('')}</select>
+            </div>
+            <div class="form-group"><label>Tier *</label>
+                <select id="f_tier">${['Wild Card','Extra','Walk-On'].map(t=>'<option'+(t===n.tier?' selected':'')+'>'+t+'</option>').join('')}</select>
+            </div>
+            <div class="form-group"><label>Archetype</label>
+                <select id="f_archetype"><option value="">—</option>${['combat','social','criminal','scholarly','maritime','wilderness','spellcaster'].map(a=>'<option'+(a===n.archetype?' selected':'')+'>'+a+'</option>').join('')}</select>
+            </div>
+        </div>
+        <div class="form-group"><label>Signature Quote</label><input id="f_quote" value="${(n.quote||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-group"><label>Description</label><textarea id="f_description" rows="2">${n.description||''}</textarea></div>
+        <div class="form-group"><label>Background</label><textarea id="f_background" rows="2">${n.background||''}</textarea></div>
+        <div class="form-row">
+            ${['agility','smarts','spirit','strength','vigor'].map(a => '<div class="form-group"><label>'+a.charAt(0).toUpperCase()+a.slice(1)+'</label><select id="f_'+a+'" class="die-select"><option value="0">—</option>'+[4,6,8,10,12].map(d=>'<option value="'+d+'"'+(n[a]===d?' selected':'')+'>d'+d+'</option>').join('')+'</select></div>').join('')}
+        </div>
+        <div class="form-row">
+            <div class="form-group"><label>Pace</label><input id="f_pace" type="number" value="${n.pace||6}"></div>
+            <div class="form-group"><label>Parry</label><input id="f_parry" type="number" value="${n.parry||2}"></div>
+            <div class="form-group"><label>Toughness</label><input id="f_toughness" type="number" value="${n.toughness||5}"></div>
+            <div class="form-group"><label>Tough (Armor)</label><input id="f_toughness_armor" type="number" value="${n.toughness_armor||0}"></div>
+            <div class="form-group"><label>Bennies</label><input id="f_bennies" type="number" value="${n.bennies||0}"></div>
+        </div>
+        <div class="form-group"><label>Edges (legacy, comma-separated)</label><input id="f_edges" value="${(n.edges||[]).join(', ')}"></div>
+        <div class="form-group"><label>Hindrances (legacy, comma-separated)</label><input id="f_hindrances" value="${(n.hindrances||[]).join(', ')}"></div>
+        <div class="form-group"><label>Gear (legacy, comma-separated)</label><input id="f_gear" value="${(n.gear||[]).join(', ')}"></div>
+        <div class="form-row">
+            <div class="form-group"><label>Power Points</label><input id="f_power_points" type="number" value="${n.power_points||0}"></div>
+            <div class="form-group"><label>Arcane Background</label><input id="f_arcane_bg" value="${(n.arcane_bg||'').replace(/"/g,'&quot;')}"></div>
+        </div>
+        <div class="form-group"><label>Powers (legacy, comma-separated)</label><input id="f_powers" value="${(n.powers||[]).join(', ')}"></div>
+        <div class="form-group"><label>What They Want</label><input id="f_motivation" value="${(n.motivation||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-group"><label>Their Secret</label><textarea id="f_secret" rows="2">${n.secret||''}</textarea></div>
+        <div class="form-group"><label>Tactics</label><textarea id="f_tactics" rows="2">${n.tactics||''}</textarea></div>
+        <div class="form-group"><label>Services</label><input id="f_services" value="${(n.services||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-group"><label>Adventure Hook</label><input id="f_adventure_hook" value="${(n.adventure_hook||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-row">
+            <div class="form-group"><label>Source Document</label><input id="f_source_document" value="${(n.source_document||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-group"><label>Rank Guideline</label>
+                <select id="f_rank_guideline"><option value="">—</option>${['Novice','Seasoned','Veteran','Heroic','Legendary'].map(r=>'<option'+(r===n.rank_guideline?' selected':'')+'>'+r+'</option>').join('')}</select>
+            </div>
+        </div>
+        <div class="form-group"><label>Notes</label><textarea id="f_notes" rows="2">${n.notes||''}</textarea></div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn primary" onclick="saveNPC()">Save</button>
+            <button class="btn" onclick="closeWorkspace()">Cancel</button>
+        </div>`;
+}
+
+function renderStatblockWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Stat Block — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="wsExportContent">Loading...</div>`;
+}
+
+async function loadStatblockWS(npcId) {
+    const data = await api('/api/npcs/' + npcId + '/statblock');
+    const el = document.getElementById('wsExportContent');
+    if (!el) return;
+    el.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${data.statblock}</pre>
+        <button class="btn sm" onclick="copyToClipboard(this)" style="margin-top:8px">Copy</button>`;
+}
+
+function renderFgxmlWS(npcId, name) {
+    return `<div class="workspace-header"><h3>Fantasy Grounds XML — ${name}</h3><button class="btn sm" onclick="closeWorkspace()">✕ Done</button></div>
+        <div id="wsExportContent">Loading...</div>`;
+}
+
+async function loadFgxmlWS(npcId) {
+    const data = await api('/api/npcs/' + npcId + '/fgxml');
+    const el = document.getElementById('wsExportContent');
+    if (!el) return;
+    el.innerHTML = `<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${escapeHtml(data.xml)}</pre>
+        <button class="btn sm" onclick="copyToClipboard(this)" style="margin-top:8px">Copy</button>`;
 }
 
 function renderWeaponsWS(npcId, name) {
