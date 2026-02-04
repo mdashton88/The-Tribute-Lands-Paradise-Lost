@@ -3160,15 +3160,25 @@ async function exportFGXml(npcId) {
 }
 
 function escapeHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').replace(/>/g,'&gt;');
+    if (!s) return '';
+    return s.split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;');
 }
 
 function mdToHtml(md) {
+    if (!md) return '';
     var s = escapeHtml(md);
-    s = s.replace(/[*][*](.+?)[*][*]/g, '<strong>$1</strong>');
-    s = s.replace(/[*](.+?)[*]/g, '<em>$1</em>');
-    s = s.replace(/\n\n/g, '<br><br>');
-    s = s.replace(/\n/g, '<br>');
+    var parts = s.split('**');
+    for (var i = 1; i < parts.length; i += 2) {
+        parts[i] = '<strong>' + parts[i] + '</strong>';
+    }
+    s = parts.join('');
+    parts = s.split('*');
+    for (var i = 1; i < parts.length; i += 2) {
+        parts[i] = '<em>' + parts[i] + '</em>';
+    }
+    s = parts.join('');
+    s = s.split('\\n\\n').join('<br><br>');
+    s = s.split('\\n').join('<br>');
     return s;
 }
 
