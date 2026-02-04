@@ -1976,7 +1976,7 @@ function renderNPCDetail(n) {
     // Tactics
     let tacticsHtml = '';
     if (n.tactics) {
-        tacticsHtml = `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px 16px;margin-top:10px;font-size:12px"><span style="color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:1px;font-size:11px">Tactics</span><div style="margin-top:4px;color:var(--text)">${n.tactics}</div></div>`;
+        tacticsHtml = `<div class="section"><h3>Tactics</h3><div class="section-content">${n.tactics}</div></div>`;
     }
 
     // Action buttons + production status
@@ -2045,7 +2045,6 @@ function renderNPCDetail(n) {
             <h2>${n.name}</h2>
             ${titleLine}
         </div>
-        ${quote}
         <div class="detail-columns" id="detailColumns">
             <div class="col-stats" id="colStats">
                 <div class="col-gauge" id="gaugeStats"></div>
@@ -2056,7 +2055,6 @@ function renderNPCDetail(n) {
                 ${hindrancesPanel}
                 ${edgesPanel}
                 ${powersPanel}
-                ${tacticsHtml}
                 ${statusHtml}
                 <div id="exportOutput"></div>
             </div>
@@ -2072,7 +2070,8 @@ function renderNPCDetail(n) {
             <div class="col-narrative" id="colNarrative">
                 <div class="col-gauge" id="gaugeNarrative"></div>
                 ${portraitHtml}
-                ${desc}${bg}${narrative}${orgsHtml}${connsHtml}${appsHtml}${notesHtml}${source}
+                ${quote}
+                ${desc}${bg}${narrative}${tacticsHtml}${orgsHtml}${connsHtml}${appsHtml}${notesHtml}${source}
             </div>
         </div>`;
     initResizers();
