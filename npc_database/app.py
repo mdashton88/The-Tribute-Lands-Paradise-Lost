@@ -1577,6 +1577,7 @@ function auditCharacter(n) {
         const majorCount = hindLegacy.filter(h => (h.severity||'') === 'Major').length;
         const minorCount = hindLegacy.filter(h => (h.severity||'') === 'Minor').length;
         const hindPts = (majorCount * 2) + (minorCount * 1);
+        const effectiveHindPts = Math.min(hindPts, 4);
         const maxAttrFromHind = Math.floor(effectiveHindPts / 2); // 2 hind pts = 1 attribute die step
         const baseAttrBudget = 6; // human
 
@@ -1591,7 +1592,6 @@ function auditCharacter(n) {
 
         // ── 3. HINDRANCE LIMITS ──
         // Core rules: any combination up to 4 points benefit. You CAN take more but benefit caps at 4.
-        const effectiveHindPts = Math.min(hindPts, 4);
         if (hindPts > 4) {
             F('info', 'hindrances', `${hindPts} Hindrance points taken — benefit capped at 4 (${hindPts - 4} pts wasted)`);
         }
