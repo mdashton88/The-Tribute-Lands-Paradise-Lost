@@ -443,14 +443,10 @@ HTML_TEMPLATE = '''
         .npc-quote {
             font-style: italic;
             color: var(--accent);
-            margin: 0;
+            margin: 0 0 16px 0;
             padding: 8px 0 8px 12px;
             border-left: 2px solid var(--accent-dim);
             font-size: 14px;
-            position: sticky;
-            top: 60px;
-            background: var(--bg-main);
-            z-index: 7;
         }
         .npc-description, .npc-background {
             margin-bottom: 10px;
