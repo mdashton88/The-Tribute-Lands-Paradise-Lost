@@ -2376,20 +2376,16 @@ async function loadStatblockWS(npcId) {
     const data = await api('/api/npcs/' + npcId + '/statblock');
     const el = document.getElementById('wsExportContent');
     if (!el) return;
-    // Convert markdown to simple HTML
-    const html = data.statblock
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\n\n/g, '<br><br>')
-        .replace(/\n/g, '<br>');
+    // Convert markdown to simple HTML via helper
+    const html = mdToHtml(data.statblock);
+    const mdEscaped = escapeHtml(data.statblock);
     el.innerHTML = `
         <div style="display:flex;gap:8px;margin-bottom:10px">
             <button class="btn sm" id="sbTabHtml" onclick="showStatblockTab('html')" style="border-bottom:2px solid var(--accent)">Formatted</button>
             <button class="btn sm" id="sbTabMd" onclick="showStatblockTab('md')">Markdown</button>
         </div>
         <div id="sbHtmlView" style="font-size:13px;line-height:1.6">${html}</div>
-        <div id="sbMdView" style="display:none"><pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${data.statblock.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></div>
+        <div id="sbMdView" style="display:none"><pre style="white-space:pre-wrap;font-size:12px;line-height:1.5">${mdEscaped}</pre></div>
         <div style="margin-top:10px;display:flex;gap:8px">
             <button class="btn sm" onclick="copyStatblockHtml()">Copy HTML</button>
             <button class="btn sm" onclick="copyStatblockMd()">Copy Markdown</button>
@@ -3163,7 +3159,18 @@ async function exportFGXml(npcId) {
         </div>`;
 }
 
-function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function mdToHtml(md) {
+    var s = escapeHtml(md);
+    s = s.replace(/[*][*](.+?)[*][*]/g, '<strong>$1</strong>');
+    s = s.replace(/[*](.+?)[*]/g, '<em>$1</em>');
+    s = s.replace(/\n\n/g, '<br><br>');
+    s = s.replace(/\n/g, '<br>');
+    return s;
+}
 
 function copyToClipboard(btn) {
     const pre = btn.parentElement.querySelector('pre');
