@@ -4120,6 +4120,14 @@ def api_update():
 
     # ── Step 3: Pull any remote updates ──
     try:
+        # Stash any local changes first to prevent merge conflicts
+        stash_result = subprocess.run(
+            ['git', 'stash', '--include-untracked'],
+            cwd=repo_path,
+            capture_output=True, text=True, timeout=10
+        )
+        stashed = 'No local changes' not in stash_result.stdout
+
         result = subprocess.run(
             ['git', 'pull', '--ff-only'],
             cwd=repo_path,
@@ -4130,6 +4138,15 @@ def api_update():
 
         output = result.stdout.strip()
         needs_restart = False
+
+        # After pull, handle stash: remote always wins for code files
+        if stashed:
+            if 'Already up to date' in output:
+                # No remote changes — restore local edits
+                subprocess.run(['git', 'stash', 'pop'], cwd=repo_path, capture_output=True, text=True, timeout=10)
+            else:
+                # Remote had updates — drop local edits (remote version wins)
+                subprocess.run(['git', 'stash', 'drop'], cwd=repo_path, capture_output=True, text=True, timeout=10)
 
         if result.returncode == 0:
             # If repo is separate from app, sync pulled files back to app dir
