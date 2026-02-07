@@ -1582,48 +1582,53 @@ const SWADE = {
     coreSkills: ['Athletics', 'Common Knowledge', 'Notice', 'Persuasion', 'Stealth'],
     attrNames: ['agility', 'smarts', 'spirit', 'strength', 'vigor'],
 
-    // Edge requirements: name → { rank, attrs:{attr:die}, skills:{skill:die}, edges:[], notes }
-    // Core SWADE edges
+    // Edge requirements: name → { rank, attrs:{attr:die}, skills:{skill:die}, skills_or:[{skill:die}], edges:[], notes }
+    // Audited 2026-02-07 against canonical sources (SWADE core, Ammaria PDF, regional supplements)
     edgeReqs: {
-        // Background
+        // ── BACKGROUND EDGES ──
         'Alertness': {},
         'Ambidextrous': { attrs: {agility: 8} },
         'Arcane Background': {},
         'Arcane Resistance': { attrs: {spirit: 8} },
+        'Aristocrat': {},
         'Attractive': { attrs: {vigor: 6} },
         'Berserk': {},
         'Brave': { attrs: {spirit: 6} },
         'Brawny': { attrs: {strength: 6, vigor: 6} },
-        'Calculating': { attrs: {smarts: 8} },
+        'Brute': { attrs: {strength: 6, vigor: 6} },
         'Charismatic': { attrs: {spirit: 8} },
         'Elan': { attrs: {spirit: 8} },
+        'Fame': {},
+        'Fast Healer': { attrs: {vigor: 8} },
         'Fleet-Footed': { attrs: {agility: 6} },
         'Linguist': { attrs: {smarts: 6} },
         'Luck': {},
         'Quick': { attrs: {agility: 8} },
         'Rich': {},
-        // Combat
+
+        // ── COMBAT EDGES ──
         'Block': { rank: 'Seasoned', skills: {Fighting: 8} },
         'Brawler': { attrs: {strength: 8, vigor: 8} },
         'Bruiser': { rank: 'Seasoned', edges: ['Brawler'] },
+        'Calculating': { attrs: {smarts: 8} },
         'Combat Reflexes': { rank: 'Seasoned' },
         'Counterattack': { rank: 'Seasoned', skills: {Fighting: 8} },
-        'Dead Shot': { rank: 'Seasoned', skills: {Shooting: 8} },
-        'Dodge': { attrs: {agility: 8} },
-        'Double Tap': { skills: {Shooting: 6} },
+        'Dead Shot': { rank: 'Seasoned', skills_or: [{Athletics: 8}, {Shooting: 8}] },
+        'Dodge': { rank: 'Seasoned', attrs: {agility: 8} },
+        'Double Tap': { rank: 'Seasoned', skills: {Shooting: 6} },
         'Extraction': { attrs: {agility: 8} },
         'Feint': { skills: {Fighting: 8} },
         'First Strike': { attrs: {agility: 8} },
         'Free Runner': { attrs: {agility: 8}, skills: {Athletics: 6} },
         'Frenzy': { rank: 'Seasoned', skills: {Fighting: 8} },
-        'Giant Killer': { rank: 'Seasoned' },
+        'Giant Killer': { rank: 'Veteran' },
         'Hard to Kill': { attrs: {spirit: 8} },
         'Harder to Kill': { rank: 'Veteran', edges: ['Hard to Kill'] },
-        'Improvisational Fighter': { attrs: {smarts: 6} },
+        'Improvisational Fighter': { rank: 'Seasoned', attrs: {smarts: 6} },
         'Iron Jaw': { attrs: {vigor: 8} },
         'Killer Instinct': { rank: 'Seasoned' },
         'Level Headed': { rank: 'Seasoned', attrs: {smarts: 8} },
-        'Marksman': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'Marksman': { rank: 'Seasoned', skills_or: [{Athletics: 8}, {Shooting: 8}] },
         'Martial Artist': { skills: {Fighting: 6} },
         'Mighty Blow': { rank: 'Seasoned', skills: {Fighting: 8} },
         'Nerves of Steel': { attrs: {vigor: 8} },
@@ -1632,43 +1637,54 @@ const SWADE = {
         'Rock and Roll': { rank: 'Seasoned', skills: {Shooting: 8} },
         'Steady Hands': { attrs: {agility: 8} },
         'Sweep': { attrs: {strength: 8}, skills: {Fighting: 8} },
-        'Trademark Weapon': { skills: {Fighting: 8} },
+        'Trademark Weapon': { skills_or: [{Fighting: 8}, {Shooting: 8}, {Athletics: 8}] },
         'Two-Fisted': { attrs: {agility: 8} },
         'Two-Gun Kid': { attrs: {agility: 8} },
-        // Leadership
+
+        // ── LEADERSHIP EDGES ──
         'Command': { attrs: {smarts: 6} },
         'Command Presence': { rank: 'Seasoned', edges: ['Command'] },
         'Fervor': { rank: 'Veteran', attrs: {spirit: 8}, edges: ['Command'] },
         'Hold the Line!': { rank: 'Seasoned', attrs: {smarts: 8}, edges: ['Command'] },
         'Inspire': { rank: 'Seasoned', edges: ['Command'] },
-        'Natural Leader': { rank: 'Seasoned', attrs: {spirit: 8}, edges: ['Command'] },
-        'Tactician': { rank: 'Seasoned', attrs: {smarts: 8}, edges: ['Command'] },
-        // Power
+        'Natural Leader': { attrs: {spirit: 8}, edges: ['Command'] },
+        'Tactician': { rank: 'Seasoned', attrs: {smarts: 8}, edges: ['Command'], skills: {Battle: 6} },
+
+        // ── POWER EDGES ──
+        'Artificer': { rank: 'Seasoned', edges: ['Arcane Background'] },
+        'Channeling': { rank: 'Seasoned', edges: ['Arcane Background'] },
+        'Concentration': { rank: 'Seasoned', edges: ['Arcane Background'] },
         'New Powers': { edges: ['Arcane Background'] },
         'Power Points': { edges: ['Arcane Background'] },
+        'Power Surge': { rank: 'Seasoned', edges: ['Arcane Background'] },
         'Rapid Recharge': { rank: 'Seasoned', attrs: {spirit: 6}, edges: ['Arcane Background'] },
         'Soul Drain': { rank: 'Seasoned', edges: ['Arcane Background'] },
-        // Professional
-        'Ace': { skills: {Driving: 8} },
+        'Wizard': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
+        'Mentalist': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
+
+        // ── PROFESSIONAL EDGES ──
+        'Ace': { attrs: {agility: 8} },
         'Acrobat': { attrs: {agility: 8}, skills: {Athletics: 8} },
         'Champion': { attrs: {spirit: 8}, skills: {Fighting: 6}, edges: ['Arcane Background'] },
+        'Combat Medic': { rank: 'Seasoned', skills: {Healing: 6} },
         'Healer': { attrs: {spirit: 8} },
+        'Holy/Unholy Warrior': { attrs: {spirit: 8}, edges: ['Arcane Background'] },
         'Holy Warrior': { attrs: {spirit: 8}, edges: ['Arcane Background'] },
-        'Investigator': { attrs: {smarts: 8} },
+        'Investigator': { attrs: {smarts: 8}, skills: {Research: 8} },
         'Jack-of-all-Trades': { attrs: {smarts: 10} },
         'McGyver': { attrs: {smarts: 6}, skills: {Repair: 6} },
-        'Mentalist': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
-        'Scholar': { attrs: {smarts: 8} },
+        'Mr. Fix It': { skills: {Repair: 8} },
+        'Scholar': { skills: {Research: 8} },
         'Soldier': { attrs: {strength: 6, vigor: 6} },
         'Thief': { attrs: {agility: 8}, skills: {Stealth: 6, Thievery: 6} },
-        'Wizard': { attrs: {smarts: 8}, edges: ['Arcane Background'] },
         'Woodsman': { attrs: {spirit: 6}, skills: {Survival: 8} },
-        // Social
+
+        // ── SOCIAL EDGES ──
         'Bolster': { attrs: {spirit: 8} },
         'Common Bond': { attrs: {spirit: 8} },
         'Connections': {},
         'Humiliate': { rank: 'Seasoned', skills: {Taunt: 8} },
-        'Menacing': { attrs: {spirit: 8} },
+        'Menacing': {},
         'Provoke': { skills: {Taunt: 6} },
         'Rabble-Rouser': { rank: 'Seasoned', attrs: {spirit: 8} },
         'Reliable': { attrs: {spirit: 8} },
@@ -1676,34 +1692,57 @@ const SWADE = {
         'Streetwise': { attrs: {smarts: 6} },
         'Strong Willed': { attrs: {spirit: 8} },
         'Work the Room': { attrs: {spirit: 8} },
-        // Weird / Legendary omitted for brevity
+        'Work the Crowd': { rank: 'Seasoned', edges: ['Work the Room'] },
 
-        // === TRIBUTE LANDS CUSTOM EDGES ===
-        // Ammaria
-        'Appraiser': { attrs: {smarts: 6}, skills: {Notice: 6} },
-        'Blackmarket Broker': { skills: {'Common Knowledge': 6, Persuasion: 6} },
-        'Guild Journeyman': { notes: 'Smarts d6+ or Agility d6+, relevant trade skill d6+' },
-        'Guildmaster': { rank: 'Seasoned', edges: ['Guild Journeyman'] },
-        'Moneylender': { rank: 'Seasoned', attrs: {smarts: 8}, skills: {Persuasion: 6} },
-        "Sailor's Edge": { skills: {Boating: 6, Athletics: 4} },
-        "Smuggler's Eye": { skills: {Notice: 6} },
-        'Patron': {},
-        'Halberd Guard': { skills: {Fighting: 6} },
-        'Halberd Master': { rank: 'Seasoned', edges: ['Halberd Guard'], skills: {Fighting: 8} },
-        'War Boar Rider': { rank: 'Seasoned', skills: {Riding: 8} },
+        // ── WEIRD EDGES ──
+        'Beast Bond': {},
+        'Beast Master': { attrs: {spirit: 8} },
+        'Danger Sense': {},
+        'Scavenger': { edges: ['Luck'] },
+
+        // ── LEGENDARY EDGES ──
+        'Followers': { rank: 'Legendary' },
+        'Professional': { rank: 'Legendary' },
+        'Sidekick': { rank: 'Legendary' },
+        'Tough as Nails': { rank: 'Legendary', attrs: {vigor: 8} },
+        'Weapon Master': { rank: 'Legendary', skills: {Fighting: 12} },
+
+        // ═══════════════════════════════════════════
+        // AMMARIA — Canonical (201_Ammaria.pdf)
+        // ═══════════════════════════════════════════
+        // Combat
+        'Ammarian Halberd Guard': { skills: {Fighting: 6} },
+        'Caravan Guard': { skills_or: [{Fighting: 6}, {Shooting: 6}] },
         'Repeating Crossbow Training': { skills: {Shooting: 6} },
         'Repeating Crossbow Mastery': { rank: 'Seasoned', edges: ['Repeating Crossbow Training'], skills: {Shooting: 8} },
-        'Caravan Guard': { attrs: {vigor: 6}, skills: {Fighting: 6} },
-        'Canal Rat': { attrs: {agility: 6}, skills: {Athletics: 6} },
-        'Debt-Resistant': { attrs: {spirit: 6} },
+        'War Boar Rider': { rank: 'Seasoned', skills: {Riding: 8} },
+        // Professional
+        'Appraiser': { attrs: {smarts: 6}, skills: {Notice: 6} },
+        'Blackmarket Broker': { skills: {'Common Knowledge': 6, Persuasion: 6} },
+        'Guild Journeyman': { notes: 'Smarts d6+ or Agility d6+, trade skill d6+' },
+        'Guildmaster': { rank: 'Seasoned', edges: ['Guild Journeyman'] },
+        'Moneylender': { rank: 'Seasoned', attrs: {smarts: 8}, skills: {Persuasion: 6} },
+        'Photographic Memory': { attrs: {smarts: 8} },
+        "Sailor's Edge": { skills: {Boating: 6, Athletics: 4} },
+        "Smuggler's Eye": { skills: {Notice: 6} },
+        // Social
+        'Patron': {},
+        'Political Connections': { rank: 'Seasoned', skills: {Persuasion: 8} },
+        'Reputation (Commerce)': { rank: 'Seasoned', skills: {Persuasion: 6} },
+        'Underworld Contacts': { skills: {'Common Knowledge': 6} },
+        // Magic
         'Guild Alchemist': { edges: ['Arcane Background'], attrs: {smarts: 6} },
-        // Saltlands
+        'Guild Trained': { edges: ['Arcane Background'], attrs: {smarts: 6} },
+        'Commercial Caster': { edges: ['Arcane Background'], skills: {Persuasion: 6} },
+        'Oath-Binder': { edges: ['Arcane Background'], attrs: {smarts: 6} },
+
+        // ═══════════════════════════════════════════
+        // SALTLANDS — Canonical (202_Saltlands_v2.2)
+        // ═══════════════════════════════════════════
+        'Brace of Pistols': { skills: {Shooting: 6} },
+        'Cutlass & Pistol': { skills: {Fighting: 6, Shooting: 6} },
         'Cutting Wit': { skills: {Taunt: 6} },
-        'No Fair Fights': { attrs: {agility: 8}, skills: {Fighting: 6} },
-        'Board and Storm': { attrs: {strength: 6}, skills: {Fighting: 6, Athletics: 6} },
-        'Reef Navigator': { skills: {Boating: 8} },
-        'Sea Legs': { attrs: {agility: 6} },
-        'Deadeye': { rank: 'Seasoned', skills: {Shooting: 8} },
+        'No Fair Fights': { skills: {Fighting: 6} },
         'Scrapper': { rank: 'Seasoned', skills: {Fighting: 8}, attrs: {vigor: 6} },
         "Pirate's Eye": { skills: {Notice: 6} },
         'Terrifying Reputation': { rank: 'Seasoned', skills: {Intimidation: 8} },
@@ -1711,14 +1750,15 @@ const SWADE = {
         'Survivor': { attrs: {vigor: 6} },
         'Sea Witch': { attrs: {spirit: 6}, edges: ['Arcane Background'] },
         'Storm-Caller': { rank: 'Seasoned', edges: ['Sea Witch'] },
-        // Vinlands
-        'Waldl': { skills: {Stealth: 6, Survival: 6} },
+
+        // ═══════════════════════════════════════════
+        // VINLANDS — From canonical v4.3
+        // ═══════════════════════════════════════════
+        'Waldläufer': { skills: {Stealth: 6, Survival: 6} },
         'Thornguard Veteran': { skills: {Shooting: 6, Notice: 6} },
         'Wall-Warden': { skills: {Shooting: 6, Notice: 6} },
         'Ashwarden': { skills: {Survival: 6}, attrs: {smarts: 6} },
         'Beast-Kin': { attrs: {spirit: 8} },
-        'Beast Bond': { attrs: {spirit: 8} },
-        'Beast Master': { attrs: {spirit: 8} },
         "Factor's Eye": { attrs: {smarts: 6}, skills: {Notice: 6} },
         'Rune-Carver': { attrs: {smarts: 6}, edges: ['Arcane Background'] },
         'Clan Standing': {},
@@ -1907,7 +1947,7 @@ function auditCharacter(n) {
                 }
             }
         }
-        // Skill checks
+        // Skill checks (AND — all required)
         if (req.skills) {
             for (const [skill, minDie] of Object.entries(req.skills)) {
                 const s = skills.find(sk => sk.name === skill);
@@ -1915,6 +1955,22 @@ function auditCharacter(n) {
                     met = false;
                     reasons.push(`needs ${skill} d${minDie}+`);
                 }
+            }
+        }
+        // Skill checks (OR — at least one option required)
+        if (req.skills_or) {
+            const anyMet = req.skills_or.some(skillReq => {
+                return Object.entries(skillReq).every(([skill, minDie]) => {
+                    const s = skills.find(sk => sk.name === skill);
+                    return s && s.die >= minDie;
+                });
+            });
+            if (!anyMet) {
+                met = false;
+                const options = req.skills_or.map(sr =>
+                    Object.entries(sr).map(([s,d]) => `${s} d${d}+`).join(' + ')
+                ).join(' or ');
+                reasons.push(`needs ${options}`);
             }
         }
         // Prerequisite edge checks
@@ -5273,3 +5329,4 @@ if __name__ == '__main__':
     threading.Timer(1.0, open_browser).start()
 
     app.run(debug=False, port=5000)
+
